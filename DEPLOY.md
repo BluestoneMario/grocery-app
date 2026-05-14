@@ -30,13 +30,47 @@ When you change a file, repeat steps in **Workers & Pages → market-list → Cr
 
 ---
 
-## Option B — GitHub Pages (fallback)
+## Option B — GitHub Pages ✅ ACTIVE (deployed 2026-05-14)
 
-If you already use GitHub:
+**Live URL:** https://bluestonemario.github.io/grocery-app/
+**Repository:** https://github.com/BluestoneMario/grocery-app
+**GitHub username:** BluestoneMario
 
-1. Create a new repository, upload all files in this folder to the root.
-2. In the repo's **Settings → Pages**, set source to `main` branch, root.
-3. Wait ~1 minute. Your app is at `https://<your-username>.github.io/<repo-name>/`.
+### How it was set up (one-time, already done)
+
+```bash
+# 1. Configure Git identity
+git config --global user.name "BluestoneMario"
+git config --global user.email "lennarthellwig@yahoo.de"
+
+# 2. Navigate to the app folder
+cd "/Users/lennart.hellwig/Documents/Claude Code Personal/Grocery App"
+
+# 3. Initialise Git and make the first commit
+git init
+git add .
+git commit -m "Initial commit"
+git branch -M main
+
+# 4. Connect to GitHub and push
+git remote add origin https://github.com/BluestoneMario/grocery-app.git
+git push -u origin main
+```
+
+Then in the repo's **Settings → Pages**, source was set to `main` branch, root. GitHub Pages went live ~60 seconds later.
+
+**Authentication note:** GitHub does not accept your account password for `git push`. Use a Personal Access Token instead. Generate one at: GitHub → Settings → Developer settings → Personal access tokens → Tokens (classic). Tick the `repo` scope. Paste the token when Git asks for your password.
+
+### Updating the app (use this every time you make changes)
+
+```bash
+cd "/Users/lennart.hellwig/Documents/Claude Code Personal/Grocery App"
+git add .
+git commit -m "describe what you changed"
+git push
+```
+
+The live site updates within ~60 seconds of a successful push. Remember to bump `APP_VERSION` in `sw.js` when you change `index.html` or `sw.js` so the service worker cache refreshes on users' devices.
 
 ---
 
