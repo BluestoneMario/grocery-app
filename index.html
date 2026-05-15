@@ -1259,6 +1259,122 @@
     .settings-close:active {
       border-color: var(--text-dim);
     }
+
+    /* ── STORE SWITCHER ── */
+    .store-switcher {
+      display: flex;
+      gap: 5px;
+      margin-bottom: 10px;
+      flex-wrap: wrap;
+    }
+
+    .store-pill {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      color: var(--text-muted);
+      font-family: 'Oswald', Impact, 'Helvetica Neue Condensed', 'Arial Narrow', sans-serif;
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: 0.07em;
+      padding: 5px 13px;
+      cursor: pointer;
+      transition: background 0.15s, color 0.15s, border-color 0.15s;
+      user-select: none;
+      white-space: nowrap;
+    }
+
+    .store-pill.active {
+      background: var(--accent-dim);
+      border-color: var(--accent-border);
+      color: var(--accent);
+    }
+
+    .store-pill:active { opacity: 0.8; }
+
+    /* ── NOTE PANEL: expand height for availability button ── */
+    .item-note-panel.open {
+      max-height: 200px;
+    }
+
+    /* ── UNKNOWN AVAILABILITY SECTION ── */
+    .unknown-section {
+      border-top: 1px solid var(--border-light);
+    }
+
+    .unknown-section summary {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 16px 4px;
+      list-style: none;
+      cursor: pointer;
+      user-select: none;
+    }
+
+    .unknown-section summary::-webkit-details-marker { display: none; }
+
+    .unknown-toggle-icon {
+      font-size: 9px;
+      color: var(--text-dim);
+      transition: transform 0.18s;
+      margin-left: auto;
+      flex-shrink: 0;
+    }
+
+    .unknown-section[open] .unknown-toggle-icon {
+      transform: rotate(180deg);
+    }
+
+    /* ── AVAILABILITY TOGGLE BUTTON (in note panel) ── */
+    .avail-btn {
+      display: block;
+      width: 100%;
+      margin-top: 7px;
+      background: transparent;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      color: var(--text-muted);
+      font-family: 'Space Mono', ui-monospace, 'SF Mono', Menlo, Monaco, Consolas, monospace;
+      font-size: 11px;
+      padding: 7px 10px;
+      cursor: pointer;
+      text-align: left;
+      transition: border-color 0.15s, color 0.15s;
+    }
+
+    .avail-btn:active {
+      border-color: var(--accent-border);
+      color: var(--accent);
+    }
+
+    .avail-btn.is-unavailable {
+      color: var(--red);
+      border-color: rgba(224,85,85,0.3);
+    }
+
+    /* ── STORE NAME INPUT (settings) ── */
+    .store-edit-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-bottom: 5px;
+    }
+
+    .store-name-edit {
+      flex: 1;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      color: var(--text);
+      font-family: 'Space Mono', ui-monospace, 'SF Mono', Menlo, Monaco, Consolas, monospace;
+      font-size: 12px;
+      padding: 7px 10px;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+
+    .store-name-edit:focus { border-color: var(--accent-border); }
   </style>
 </head>
 <body>
@@ -1286,6 +1402,7 @@
     <button class="toggle-btn active" data-view="list">LIST</button>
     <button class="toggle-btn" data-view="recipes">RECIPES</button>
   </div>
+  <div class="store-switcher" id="storeSwitcher"></div>
 
   <div class="add-row" id="addRow">
     <div class="input-wrap">
@@ -1364,6 +1481,12 @@
     </div>
 
     <div class="settings-section">
+      <div class="settings-section-title">Stores</div>
+      <div id="storeListSettings"></div>
+      <button class="settings-btn" id="addStoreBtn">+ Add store</button>
+    </div>
+
+    <div class="settings-section">
       <div class="settings-section-title">Backup</div>
       <button class="settings-btn" id="exportBtn">Download backup (JSON)</button>
       <button class="settings-btn" id="importBtn">Restore from backup file…</button>
@@ -1385,17 +1508,25 @@
 // STATE
 // ════════════════════════════════════════════
 
+const DEFAULT_STORES = [
+  { id: 'grocery_main', name: 'Supermarkt', type: 'grocery' },
+  { id: 'dm_main',      name: 'DM',         type: 'drugstore' }
+];
+
 let state = {
   items: [],
-  session: { id: uid(), order: [] },
-  ordered: false   // true once items have been score-sorted on first load
+  currentStoreId: 'grocery_main',
+  session: { id: uid(), storeId: 'grocery_main', order: [] },
+  ordered: false
 };
 
 let history = {};
 let recipes = [];
+let storeRegistry = [];
 let currentView = 'list';
 let reorderMode  = false;
 let pendingZone  = null;
+let unknownSectionOpen = false;
 
 // Pointer drag state (ephemeral, never persisted)
 let dragEl     = null;
@@ -1417,13 +1548,46 @@ function nameKey(name) {
 const STORAGE_KEY  = 'marketlist_v2';
 const HISTORY_KEY  = 'itemHistory';
 const RECIPES_KEY  = 'recipes';
+const STORES_KEY   = 'storeRegistry';
+
+function migrateHistoryIfNeeded() {
+  let needsMigration = false;
+  for (const key in history) {
+    if ('zone' in history[key] || 'hist' in history[key]) {
+      needsMigration = true;
+      break;
+    }
+  }
+  if (!needsMigration) return false;
+
+  for (const key in history) {
+    const h = history[key];
+    if (('zone' in h || 'hist' in h) && !h.stores) {
+      const zone = h.zone ?? null;
+      const hist = h.hist || [];
+      history[key] = {
+        displayName: h.displayName || null,
+        comments: h.comments || [],
+        stores: { grocery_main: { zone, hist } },
+        notAt: []
+      };
+    } else {
+      if (!h.stores)   h.stores   = {};
+      if (!h.notAt)    h.notAt    = [];
+      if (!h.comments) h.comments = [];
+    }
+  }
+  return true;
+}
 
 function load() {
+  // Load history
   try {
     const rawH = localStorage.getItem(HISTORY_KEY);
     if (rawH) history = JSON.parse(rawH);
   } catch (_) {}
 
+  // Load state
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) {
@@ -1431,10 +1595,11 @@ function load() {
       const rawItems = parsed.items || [];
       let migrated = false;
       state.items = rawItems.map(item => {
+        // Migrate old items that stored zone/hist inline on the item object
         if (item.zone != null || (item.hist && item.hist.length > 0)) {
           const key = nameKey(item.name);
           if (!history[key]) {
-            history[key] = { zone: item.zone ?? null, hist: item.hist || [] };
+            history[key] = { displayName: item.name, comments: [], stores: { grocery_main: { zone: item.zone ?? null, hist: item.hist || [] } }, notAt: [] };
             migrated = true;
           }
           return { id: item.id, name: item.name, checked: !!item.checked, comment: item.comment || '' };
@@ -1442,19 +1607,39 @@ function load() {
         return { id: item.id, name: item.name, checked: !!item.checked, comment: item.comment || '' };
       });
       if (migrated) saveHistory();
-      state.session = parsed.session || { id: uid(), order: [] };
+      state.currentStoreId = parsed.currentStoreId || 'grocery_main';
+      state.session = parsed.session || { id: uid(), storeId: 'grocery_main', order: [] };
+      if (!state.session.storeId) state.session.storeId = 'grocery_main';
       state.ordered = parsed.ordered || false;
     }
   } catch (_) {}
 
+  // Migrate history from old flat shape to store-scoped shape
+  try { if (migrateHistoryIfNeeded()) saveHistory(); } catch (_) {}
+
+  // Load recipes
   try {
     const rawR = localStorage.getItem(RECIPES_KEY);
     if (rawR) recipes = JSON.parse(rawR);
   } catch (_) {}
 
+  // Load store registry (create defaults if absent)
+  try {
+    const rawS = localStorage.getItem(STORES_KEY);
+    if (rawS) {
+      storeRegistry = JSON.parse(rawS);
+    } else {
+      storeRegistry = DEFAULT_STORES.map(s => ({ ...s }));
+      saveStores();
+    }
+  } catch (_) {
+    storeRegistry = DEFAULT_STORES.map(s => ({ ...s }));
+    saveStores();
+  }
+
   // One-time migration: sort existing items by score so the stored order is meaningful
   if (!state.ordered) {
-    state.items = sorted(state.items);
+    state.items = sorted(state.items, state.currentStoreId);
     state.ordered = true;
     saveState();
   }
@@ -1463,6 +1648,7 @@ function load() {
 function saveState() {
   localStorage.setItem(STORAGE_KEY, JSON.stringify({
     items: state.items,
+    currentStoreId: state.currentStoreId,
     session: state.session,
     ordered: state.ordered
   }));
@@ -1470,6 +1656,10 @@ function saveState() {
 
 function saveHistory() {
   localStorage.setItem(HISTORY_KEY, JSON.stringify(history));
+}
+
+function saveStores() {
+  localStorage.setItem(STORES_KEY, JSON.stringify(storeRegistry));
 }
 
 function saveRecipes() {
@@ -1482,32 +1672,42 @@ function saveRecipes() {
 // Note: sorted() is used only for the one-time migration sort in load().
 // render() uses state.items order directly from this point on.
 
-function score(item) {
+function score(item, storeId) {
   const h = history[nameKey(item.name)];
-  if (h && h.hist && h.hist.length >= 2) {
-    return h.hist.reduce((s, e) => s + e.pos, 0) / h.hist.length;
+  const sh = h?.stores?.[storeId];
+  if (sh && sh.hist && sh.hist.length >= 2) {
+    return sh.hist.reduce((s, e) => s + e.pos, 0) / sh.hist.length;
   }
-  if (h && h.zone != null) return h.zone;
+  if (sh && sh.zone != null) return sh.zone;
   return 1.0;
 }
 
-function indicator(item) {
+function indicator(item, storeId) {
   const h = history[nameKey(item.name)];
-  if (h && h.hist && h.hist.length >= 2) {
-    return { cls: 'hist', label: '●', tip: `${h.hist.length} trips` };
+  const sh = h?.stores?.[storeId];
+  if (sh && sh.hist && sh.hist.length >= 2) {
+    return { cls: 'hist', label: '●', tip: `${sh.hist.length} trips` };
   }
-  if (h && h.zone != null) {
+  if (sh && sh.zone != null) {
     const names = { 0.1: 'ENT', 0.4: 'MID', 0.7: 'BCK', 0.9: 'CHK' };
-    return { cls: 'zone', label: names[h.zone] ?? '~', tip: 'zone estimate' };
+    return { cls: 'zone', label: names[sh.zone] ?? '~', tip: 'zone estimate' };
   }
   return { cls: 'none', label: '—', tip: 'no data' };
 }
 
-function sorted(items) {
+function sorted(items, storeId) {
   return [...items].sort((a, b) => {
     if (a.checked !== b.checked) return a.checked ? 1 : -1;
-    return score(a) - score(b);
+    return score(a, storeId) - score(b, storeId);
   });
+}
+
+function getAvailability(item, storeId) {
+  if (!storeId) return 'unknown';
+  const h = history[nameKey(item.name)];
+  if (h && h.notAt && h.notAt.includes(storeId)) return 'unavailable';
+  if (h && h.stores && h.stores[storeId]) return 'known';
+  return 'unknown';
 }
 
 // ════════════════════════════════════════════
@@ -1517,12 +1717,13 @@ function sorted(items) {
 // Insert item at the position its score suggests among unchecked items.
 // Checked items stay at the end in their current relative order.
 function insertItem(item) {
-  const newScore = score(item);
+  const storeId = state.currentStoreId;
+  const newScore = score(item, storeId);
   const unchecked = state.items.filter(i => !i.checked);
   const checked   = state.items.filter(i => i.checked);
   let at = unchecked.length;
   for (let i = 0; i < unchecked.length; i++) {
-    if (score(unchecked[i]) > newScore) { at = i; break; }
+    if (score(unchecked[i], storeId) > newScore) { at = i; break; }
   }
   unchecked.splice(at, 0, item);
   state.items = [...unchecked, ...checked];
@@ -1533,19 +1734,29 @@ function addItem(name, zone) {
   if (!name) return false;
 
   const key = nameKey(name);
+  const storeId = state.currentStoreId;
   let histChanged = false;
-  if (zone != null) {
-    if (!history[key]) {
-      history[key] = { zone, hist: [], displayName: name };
-      histChanged = true;
-    } else {
-      if (history[key].zone == null)   { history[key].zone = zone;        histChanged = true; }
-      if (!history[key].displayName)   { history[key].displayName = name; histChanged = true; }
-    }
-  } else if (history[key] && !history[key].displayName) {
-    history[key].displayName = name;
+
+  if (!history[key]) {
+    history[key] = { displayName: name, comments: [], stores: {}, notAt: [] };
     histChanged = true;
+  } else {
+    if (!history[key].displayName) { history[key].displayName = name; histChanged = true; }
+    if (!history[key].stores)      { history[key].stores = {};         histChanged = true; }
+    if (!history[key].notAt)       { history[key].notAt = [];          histChanged = true; }
+    if (!history[key].comments)    { history[key].comments = [];       histChanged = true; }
   }
+
+  if (zone != null) {
+    if (!history[key].stores[storeId]) {
+      history[key].stores[storeId] = { zone: null, hist: [] };
+    }
+    if (history[key].stores[storeId].zone == null) {
+      history[key].stores[storeId].zone = zone;
+      histChanged = true;
+    }
+  }
+
   if (histChanged) saveHistory();
 
   insertItem({ id: uid(), name, checked: false, comment: '' });
@@ -1587,6 +1798,7 @@ function removeItem(id) {
 }
 
 function recordTrip() {
+  const sessionStoreId = state.session.storeId || 'grocery_main';
   const order = state.session.order;
   const n = order.length;
   let histChanged = false;
@@ -1597,10 +1809,18 @@ function recordTrip() {
       const item = state.items.find(i => i.id === id);
       if (!item) return;
       const key = nameKey(item.name);
-      if (!history[key]) history[key] = { zone: null, hist: [], displayName: item.name, comments: [] };
-      else if (!history[key].displayName) history[key].displayName = item.name;
-      if (!history[key].comments) history[key].comments = [];
-      history[key].hist.push({ sid, pos: (idx + 1) / n });
+      if (!history[key]) {
+        history[key] = { displayName: item.name, comments: [], stores: {}, notAt: [] };
+      } else {
+        if (!history[key].stores)      history[key].stores  = {};
+        if (!history[key].comments)    history[key].comments = [];
+        if (!history[key].notAt)       history[key].notAt   = [];
+        if (!history[key].displayName) history[key].displayName = item.name;
+      }
+      if (!history[key].stores[sessionStoreId]) {
+        history[key].stores[sessionStoreId] = { zone: null, hist: [] };
+      }
+      history[key].stores[sessionStoreId].hist.push({ sid, pos: (idx + 1) / n });
       histChanged = true;
     });
   }
@@ -1609,7 +1829,9 @@ function recordTrip() {
     const comment = (item.comment || '').trim();
     if (!comment) return;
     const key = nameKey(item.name);
-    if (!history[key]) history[key] = { zone: null, hist: [], displayName: item.name, comments: [] };
+    if (!history[key]) {
+      history[key] = { displayName: item.name, comments: [], stores: {}, notAt: [] };
+    }
     if (!history[key].comments) history[key].comments = [];
     if (!history[key].comments.includes(comment)) {
       history[key].comments.push(comment);
@@ -1620,8 +1842,7 @@ function recordTrip() {
   if (histChanged) saveHistory();
 
   state.items   = [];
-  state.session = { id: uid(), order: [] };
-  // ordered stays true — next items will be inserted by score, no re-migration needed
+  state.session = { id: uid(), storeId: state.currentStoreId, order: [] };
   saveState();
   render();
   showToast(n > 0 ? `Trip recorded — ${n} item${n !== 1 ? 's' : ''} learned` : 'List reset');
@@ -1725,13 +1946,52 @@ function addRecipeToList(recipeId) {
 // RENDER — list
 // ════════════════════════════════════════════
 
+function renderStoreSwitcher() {
+  const el = document.getElementById('storeSwitcher');
+  if (!el) return;
+  el.innerHTML = storeRegistry.map(s =>
+    `<button class="store-pill${s.id === state.currentStoreId ? ' active' : ''}" data-switch-store="${esc(s.id)}">${esc(s.name)}</button>`
+  ).join('');
+}
+
+function switchStore(id) {
+  if (id === state.currentStoreId) return;
+  state.currentStoreId = id;
+  state.items = sorted(state.items, id);
+  unknownSectionOpen = false;
+  saveState();
+  renderStoreSwitcher();
+  render();
+}
+
+function toggleAvailability(itemId, storeId) {
+  const item = state.items.find(i => i.id === itemId);
+  if (!item) return;
+  const key = nameKey(item.name);
+  if (!history[key]) {
+    history[key] = { displayName: item.name, comments: [], stores: {}, notAt: [] };
+  }
+  if (!history[key].notAt) history[key].notAt = [];
+  const idx = history[key].notAt.indexOf(storeId);
+  if (idx >= 0) {
+    history[key].notAt.splice(idx, 1);
+  } else {
+    history[key].notAt.push(storeId);
+  }
+  saveHistory();
+  render();
+}
+
 function esc(s) {
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
-function itemHtml(item) {
-  const ind = indicator(item);
-  const inReorder = reorderMode && !item.checked;
+function itemHtml(item, draggable = true) {
+  const storeId   = state.currentStoreId;
+  const store     = storeRegistry.find(s => s.id === storeId);
+  const storeName = store ? store.name : 'this store';
+  const ind       = indicator(item, storeId);
+  const inReorder = draggable && reorderMode && !item.checked;
   const cls = [
     'item',
     item.checked ? 'checked' : '',
@@ -1740,6 +2000,9 @@ function itemHtml(item) {
   const comment = item.comment || '';
   const h = history[nameKey(item.name)] || {};
   const pastComments = h.comments || [];
+  const isUnavail = !!(h.notAt && h.notAt.includes(storeId));
+  const availBtnHtml = item.checked ? '' : `
+        <button class="avail-btn${isUnavail ? ' is-unavailable' : ''}" data-avail-toggle="${item.id}">${isUnavail ? `Mark as available at ${esc(storeName)}` : `Not sold at ${esc(storeName)}`}</button>`;
 
   const commentText = comment
     ? `<span class="item-comment">${esc(comment)}</span>`
@@ -1797,20 +2060,27 @@ function itemHtml(item) {
           autocorrect="off"
           spellcheck="false"
         >
+        ${availBtnHtml}
       </div>
     </div>`;
 }
 
 function render() {
-  // state.items order IS the display order — no sorting here
-  const unchecked = state.items.filter(i => !i.checked);
-  const checked   = state.items.filter(i => i.checked);
-  const total     = state.items.length;
+  const storeId = state.currentStoreId;
+  const all     = state.items;
+  const checked = all.filter(i => i.checked);
 
-  // Reorder button: show when in list view with ≥2 items; auto-exit mode if list goes empty
+  const unchecked    = all.filter(i => !i.checked);
+  const knownItems   = unchecked.filter(i => getAvailability(i, storeId) === 'known');
+  const unknownItems = unchecked.filter(i => getAvailability(i, storeId) === 'unknown');
+  // unavailable items are not rendered
+
+  const total = all.length;
+
+  // Reorder button: show only when ≥2 known items; unknown items excluded from drag-reorder
   const reorderBtn = document.getElementById('reorderBtn');
   if (reorderBtn && currentView === 'list') {
-    const show = total > 1;
+    const show = knownItems.length > 1;
     reorderBtn.style.display = show ? 'flex' : 'none';
     if (!show && reorderMode) {
       reorderMode = false;
@@ -1840,23 +2110,38 @@ function render() {
 
   let html = '';
 
-  if (unchecked.length > 0) {
+  // Known items section
+  if (knownItems.length > 0) {
     html += `<div class="list-section">`;
-    if (checked.length > 0) {
+    if (checked.length > 0 || unknownItems.length > 0) {
       html += `
         <div class="section-header">
           <span class="section-label">to get</span>
-          <span class="section-count">${unchecked.length}</span>
+          <span class="section-count">${knownItems.length}</span>
           <span class="section-line"></span>
         </div>`;
     }
-    html += unchecked.map(itemHtml).join('');
+    html += knownItems.map(itemHtml).join('');
     html += `</div>`;
   }
 
-  if (checked.length > 0) {
-    html += `<div class="list-section">`;
+  // Unknown availability collapsible section
+  if (unknownItems.length > 0) {
     html += `
+      <details class="unknown-section"${unknownSectionOpen ? ' open' : ''}>
+        <summary>
+          <span class="section-label">Unknown availability</span>
+          <span class="section-count">${unknownItems.length}</span>
+          <span class="section-line"></span>
+          <span class="unknown-toggle-icon">▾</span>
+        </summary>
+        ${unknownItems.map(i => itemHtml(i, false)).join('')}
+      </details>`;
+  }
+
+  // In-cart section
+  if (checked.length > 0) {
+    html += `<div class="list-section">
       <div class="section-header">
         <span class="section-label">in cart</span>
         <span class="section-count">${checked.length}</span>
@@ -1867,6 +2152,14 @@ function render() {
   }
 
   root.innerHTML = html;
+
+  // Persist open/closed state across re-renders
+  const detailsEl = root.querySelector('.unknown-section');
+  if (detailsEl) {
+    detailsEl.addEventListener('toggle', () => {
+      unknownSectionOpen = detailsEl.open;
+    });
+  }
 }
 
 // ════════════════════════════════════════════
@@ -1984,6 +2277,7 @@ function renderView() {
     addRow.style.display = '';
     footer.style.display = '';
     render();
+    renderStoreSwitcher();
   } else {
     // Exit reorder mode when leaving the list view
     if (reorderMode) {
@@ -1997,6 +2291,7 @@ function renderView() {
     zoneRow.classList.remove('visible');
     closeAc();
     footer.style.display = 'none';
+    renderStoreSwitcher();
     renderRecipes();
   }
 }
@@ -2113,12 +2408,14 @@ function onDragEnd() {
     .filter(el => el.classList.contains('item'))
     .map(el => el.dataset.id);
 
-  const checked     = state.items.filter(i => i.checked);
+  const checked = state.items.filter(i => i.checked);
+  // Items not in the dragged section (unknown/unavailable items in other DOM containers)
+  const notInSection = state.items.filter(i => !i.checked && !orderedIds.includes(i.id));
   const newUnchecked = orderedIds
     .map(id => state.items.find(i => i.id === id))
     .filter(Boolean);
 
-  state.items = [...newUnchecked, ...checked];
+  state.items = [...newUnchecked, ...notInSection, ...checked];
 
   dragClone.remove();
   dragEl.classList.remove('drag-ghost');
@@ -2133,6 +2430,9 @@ function onDragEnd() {
 // ════════════════════════════════════════════
 
 document.getElementById('listRoot').addEventListener('click', e => {
+  const availBtn = e.target.closest('[data-avail-toggle]');
+  if (availBtn) { toggleAvailability(availBtn.dataset.availToggle, state.currentStoreId); return; }
+
   const noteBtn = e.target.closest('[data-note]');
   if (noteBtn) { toggleNote(noteBtn.dataset.note); return; }
 
@@ -2304,20 +2604,25 @@ const addInput = document.getElementById('addInput');
 const zoneRow  = document.getElementById('zoneRow');
 const zoneBtns = document.querySelectorAll('.zone-btn');
 
-function buildAcHtml(matches, queryLen) {
+function buildAcHtml(matches, queryLen, storeId) {
   const names = { 0.1: 'ENT', 0.4: 'MID', 0.7: 'BCK', 0.9: 'CHK' };
   return matches.map(([key, h]) => {
     const display = h.displayName || key.replace(/\b\w/g, c => c.toUpperCase());
     const hi   = esc(display.slice(0, queryLen));
     const rest = esc(display.slice(queryLen));
-    let badge = '';
-    if (h.hist && h.hist.length >= 2) badge = `<span class="ac-badge hist">●</span>`;
-    else if (h.zone != null) badge = `<span class="ac-badge zone">${names[h.zone] ?? '~'}</span>`;
+    const sh   = h.stores?.[storeId];
+    let badge  = '';
+    if (sh && sh.hist && sh.hist.length >= 2) {
+      badge = `<span class="ac-badge hist">●</span>`;
+    } else if (sh && sh.zone != null) {
+      badge = `<span class="ac-badge zone">${names[sh.zone] ?? '~'}</span>`;
+    }
     return `<div class="ac-item" data-fill="${esc(display)}"><span><span class="ac-match">${hi}</span>${rest}</span>${badge}</div>`;
   }).join('');
 }
 
-function renderAcInto(query, acEl) {
+function renderAcInto(query, acEl, storeId) {
+  storeId = storeId || state.currentStoreId;
   const q = nameKey(query);
   if (!q) { acEl.classList.remove('open'); acEl.innerHTML = ''; return; }
 
@@ -2328,7 +2633,7 @@ function renderAcInto(query, acEl) {
 
   if (matches.length === 0) { acEl.classList.remove('open'); acEl.innerHTML = ''; return; }
 
-  acEl.innerHTML = buildAcHtml(matches, query.length);
+  acEl.innerHTML = buildAcHtml(matches, query.length, storeId);
   acEl.classList.add('open');
 }
 
@@ -2365,6 +2670,11 @@ document.getElementById('acList').addEventListener('click', e => {
 document.addEventListener('pointerdown', e => {
   if (!e.target.closest('#acList') && !e.target.closest('#addInput')) closeAc();
   if (!e.target.closest('.recipe-ingredient-wrap')) closeAllRecipeAc();
+});
+
+document.getElementById('storeSwitcher').addEventListener('click', e => {
+  const pill = e.target.closest('[data-switch-store]');
+  if (pill) switchStore(pill.dataset.switchStore);
 });
 
 // ════════════════════════════════════════════
@@ -2528,7 +2838,7 @@ function idbSet(key, value) {
   });
 }
 
-const TRACKED_KEYS = [STORAGE_KEY, HISTORY_KEY, RECIPES_KEY];
+const TRACKED_KEYS = [STORAGE_KEY, HISTORY_KEY, RECIPES_KEY, STORES_KEY];
 let idbAvailable = true;
 
 // Wrap localStorage.setItem/removeItem to mirror tracked keys to IndexedDB.
@@ -2577,13 +2887,14 @@ const APP_VERSION = '1.0.0';
 function exportBackup() {
   const payload = {
     app: 'market-list',
-    schema: 1,
+    schema: 2,
     appVersion: APP_VERSION,
     exportedAt: new Date().toISOString(),
     data: {
-      [STORAGE_KEY]: localStorage.getItem(STORAGE_KEY),
-      [HISTORY_KEY]: localStorage.getItem(HISTORY_KEY),
-      [RECIPES_KEY]: localStorage.getItem(RECIPES_KEY),
+      [STORAGE_KEY]:  localStorage.getItem(STORAGE_KEY),
+      [HISTORY_KEY]:  localStorage.getItem(HISTORY_KEY),
+      [RECIPES_KEY]:  localStorage.getItem(RECIPES_KEY),
+      [STORES_KEY]:   localStorage.getItem(STORES_KEY),
     },
   };
   const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
@@ -2609,19 +2920,29 @@ function importBackupFile(file) {
       showToast('Not a Market List backup'); return;
     }
 
-    const ok = confirm('Replace your current list, history and recipes with this backup? This cannot be undone.');
+    const ok = confirm('Replace your current list, history, recipes and store settings with this backup? This cannot be undone.');
     if (!ok) return;
 
-    for (const key of TRACKED_KEYS) {
+    // Restore the keys that are present in this backup
+    const keysToRestore = [STORAGE_KEY, HISTORY_KEY, RECIPES_KEY];
+    if (payload.schema >= 2) keysToRestore.push(STORES_KEY);
+
+    for (const key of keysToRestore) {
       const v = payload.data[key];
       if (v == null) localStorage.removeItem(key);
       else           localStorage.setItem(key, v);
     }
 
-    // Reset in-memory state and reload everything from storage.
+    // Schema 1 backup: clear storeRegistry so load() creates defaults and migrates history
+    if (!payload.schema || payload.schema < 2) {
+      localStorage.removeItem(STORES_KEY);
+    }
+
+    // Reset in-memory state and reload everything from storage
     history = {};
     recipes = [];
-    state = { items: [], session: { id: uid(), order: [] }, ordered: false };
+    storeRegistry = [];
+    state = { items: [], currentStoreId: 'grocery_main', session: { id: uid(), storeId: 'grocery_main', order: [] }, ordered: false };
     load();
     renderView();
     showToast('Backup restored');
@@ -2654,21 +2975,54 @@ async function forceUpdate() {
 }
 
 function resetAll() {
-  const ok = confirm('Delete EVERYTHING — list, history, recipes? This cannot be undone (unless you have a backup).');
+  const ok = confirm('Delete EVERYTHING — list, history, recipes, store settings? This cannot be undone (unless you have a backup).');
   if (!ok) return;
   history = {};
   recipes = [];
-  state   = { items: [], session: { id: uid(), order: [] }, ordered: false };
+  storeRegistry = DEFAULT_STORES.map(s => ({ ...s }));
+  state = { items: [], currentStoreId: 'grocery_main', session: { id: uid(), storeId: 'grocery_main', order: [] }, ordered: false };
   for (const key of TRACKED_KEYS) localStorage.removeItem(key);
-  saveState(); saveHistory(); saveRecipes();
+  saveState(); saveHistory(); saveRecipes(); saveStores();
   renderView();
   showToast('All data reset');
+}
+
+function renderStoreListSettings() {
+  const el = document.getElementById('storeListSettings');
+  if (!el) return;
+  el.innerHTML = storeRegistry.map(s => `
+    <div class="store-edit-row">
+      <input class="store-name-edit" data-store-id="${esc(s.id)}"
+        value="${esc(s.name)}" maxlength="30"
+        autocomplete="off" spellcheck="false">
+    </div>`).join('');
+}
+
+function renameStore(id, name) {
+  name = name.trim();
+  if (!name) return;
+  const s = storeRegistry.find(s => s.id === id);
+  if (!s || s.name === name) return;
+  s.name = name;
+  saveStores();
+  renderStoreSwitcher();
+}
+
+function addStore(name) {
+  name = name.trim();
+  if (!name) return;
+  const id = 'store_' + uid();
+  storeRegistry.push({ id, name, type: 'grocery' });
+  saveStores();
+  renderStoreListSettings();
+  renderStoreSwitcher();
 }
 
 function openSettings() {
   document.getElementById('appVersionLabel').textContent = APP_VERSION;
   document.getElementById('storageStatusLabel').textContent =
     idbAvailable ? 'localStorage + IDB' : 'localStorage only';
+  renderStoreListSettings();
   document.getElementById('settingsOverlay').classList.add('open');
 }
 function closeSettings() {
@@ -2694,6 +3048,25 @@ document.getElementById('forceUpdateBtn').addEventListener('click', forceUpdate)
 document.getElementById('resetAllBtn').addEventListener('click', () => {
   closeSettings();
   resetAll();
+});
+
+document.getElementById('addStoreBtn').addEventListener('click', () => {
+  const name = prompt('New store name:');
+  if (name && name.trim()) addStore(name);
+});
+
+document.getElementById('storeListSettings').addEventListener('blur', e => {
+  const input = e.target.closest('.store-name-edit');
+  if (input) renameStore(input.dataset.storeId, input.value);
+}, true);
+
+document.getElementById('storeListSettings').addEventListener('keydown', e => {
+  const input = e.target.closest('.store-name-edit');
+  if (!input) return;
+  if (e.key === 'Enter' || e.key === 'Escape') {
+    renameStore(input.dataset.storeId, input.value);
+    input.blur();
+  }
 });
 
 // ════════════════════════════════════════════
