@@ -166,14 +166,96 @@ function saveRecipes() {
 // Note: sorted() is used only for the one-time migration sort in load().
 // render() uses state.items order directly from this point on.
 
+// Trip history is exponentially decayed by weeks of age so recent trips
+// dominate the score and the model adapts quickly when a store rearranges.
+// Synthetic entries (produced by history compaction) carry a baked-in
+// weight that already encodes the decay accumulated up to compaction time;
+// score() applies further decay based on the synth's recordedAt age on top.
+const DECAY_RATE    = 0.95;                  // per-week multiplicative decay
+const WEEK_MS       = 7 * 24 * 60 * 60 * 1000;
+const MAX_RAW_TRIPS = 20;                    // compaction trigger threshold
+
+// score() returns a 0..1 position estimate for `item` at `storeId`. Shape and
+// signature are unchanged. Internally it averages per-trip positions weighted
+// by DECAY_RATE^weeks_since_trip. Legacy entries without `recordedAt` are
+// treated as weight 1.0. Synthetic entries contribute (weight * decay) to
+// both numerator and denominator — their weight already encodes decay up to
+// compaction time, and we apply additional decay on top based on age.
 function score(item, storeId) {
   const h = history[nameKey(item.name)];
   const sh = h?.stores?.[storeId];
   if (sh && sh.hist && sh.hist.length >= 2) {
-    return sh.hist.reduce((s, e) => s + e.pos, 0) / sh.hist.length;
+    const now = Date.now();
+    let num = 0, den = 0;
+    for (const e of sh.hist) {
+      if (e.synthetic) {
+        const ageWeeks = e.recordedAt ? Math.max(0, (now - e.recordedAt) / WEEK_MS) : 0;
+        const w = e.weight * Math.pow(DECAY_RATE, ageWeeks);
+        num += e.position * w;
+        den += w;
+      } else {
+        const w = e.recordedAt
+          ? Math.pow(DECAY_RATE, Math.max(0, (now - e.recordedAt) / WEEK_MS))
+          : 1.0;
+        num += e.pos * w;
+        den += w;
+      }
+    }
+    return den > 0 ? num / den : 0;
   }
   if (sh && sh.zone != null) return sh.zone;
   return 1.0;
+}
+
+// Compact the oldest entries of a per-item-per-store `hist` array into a
+// single synthetic entry so storage stays bounded. The synthetic entry's
+// `weight` is the sum of effective (decayed) weights of the entries it
+// replaces, and its `recordedAt` is the newest timestamp among them
+// (null if none of the merged entries had timestamps).
+//
+// We compact however many oldest entries are needed to leave exactly
+// floor(MAX_RAW_TRIPS / 2) = 10 raw entries at the tail, plus the 1 new
+// synthetic at the head. This keeps total length at 11 after every compaction
+// regardless of how many raw entries had accumulated.
+//
+// Trace for 25 trips on one item/store (MAX_RAW_TRIPS = 20):
+//   After push 1..20:  length grows 1..20, no compaction (20 > 20 is false).
+//   After push 21:     length = 21, compact 21 - 10 = 11 oldest into 1 synth
+//                      -> [synth, t12..t21]  = 1 synth + 10 raw = 11 entries.
+//   After push 22..30: length grows 12..20, no compaction.
+//   After push 31:     length = 21 (1 synth + 20 raw), compact 11 oldest
+//                      (the existing synth + 10 oldest raw) into 1 new synth
+//                      -> [synth', t22..t31] = 1 synth + 10 raw = 11 entries.
+function compactHistory(histArr) {
+  const KEEP_RAW = Math.floor(MAX_RAW_TRIPS / 2); // 10
+  if (histArr.length <= MAX_RAW_TRIPS) return;
+  const toCompactCount = histArr.length - KEEP_RAW;
+  const head = histArr.slice(0, toCompactCount);
+  const now = Date.now();
+  let num = 0, den = 0;
+  let newestTs = 0;
+  for (const e of head) {
+    let w, pos;
+    if (e.synthetic) {
+      const ageWeeks = e.recordedAt ? Math.max(0, (now - e.recordedAt) / WEEK_MS) : 0;
+      w   = e.weight * Math.pow(DECAY_RATE, ageWeeks);
+      pos = e.position;
+    } else {
+      w = e.recordedAt
+        ? Math.pow(DECAY_RATE, Math.max(0, (now - e.recordedAt) / WEEK_MS))
+        : 1.0;
+      pos = e.pos;
+    }
+    num += pos * w;
+    den += w;
+    if (e.recordedAt && e.recordedAt > newestTs) newestTs = e.recordedAt;
+  }
+  histArr.splice(0, toCompactCount, {
+    position:   den > 0 ? num / den : 0,
+    weight:     den,
+    recordedAt: newestTs > 0 ? newestTs : null,
+    synthetic:  true,
+  });
 }
 
 function indicator(item, storeId) {
@@ -291,10 +373,16 @@ function removeItem(id) {
   }
 }
 
+// recordTrip() saves each checked item's position in the trip to its per-store
+// hist array as a raw entry { sid, pos, recordedAt }, then runs compactHistory
+// on that array so it can never grow past MAX_RAW_TRIPS + 1 entries on disk.
+// Existing entries without `recordedAt` continue to work — score() treats
+// them as weight 1.0 and compactHistory folds them in at weight 1.0.
 function recordTrip() {
   const sessionStoreId = state.session.storeId || 'grocery_main';
   const order = state.session.order;
   const n = order.length;
+  const recordedAt = Date.now();
   let histChanged = false;
 
   if (n > 0) {
@@ -314,7 +402,9 @@ function recordTrip() {
       if (!history[key].stores[sessionStoreId]) {
         history[key].stores[sessionStoreId] = { zone: null, hist: [] };
       }
-      history[key].stores[sessionStoreId].hist.push({ sid, pos: (idx + 1) / n });
+      const histArr = history[key].stores[sessionStoreId].hist;
+      histArr.push({ sid, pos: (idx + 1) / n, recordedAt });
+      compactHistory(histArr);
       histChanged = true;
     });
   }
