@@ -745,6 +745,47 @@
       transform: translateX(-50%) translateY(0);
     }
 
+    /* ── STORAGE WARNING BANNER ── */
+    .storage-warning-banner {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      z-index: 200;
+      background: #92400e;
+      color: #fef3c7;
+      font-size: 13px;
+      padding: 10px 14px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      border-bottom: 2px solid #b45309;
+      line-height: 1.4;
+    }
+    .storage-warning-banner .swb-msg { flex: 1; }
+    .storage-warning-banner .swb-export {
+      background: rgba(255,255,255,0.15);
+      border: 1px solid rgba(255,255,255,0.35);
+      color: #fef3c7;
+      font-size: 12px;
+      padding: 5px 11px;
+      border-radius: 6px;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    .storage-warning-banner .swb-export:active { opacity: 0.75; }
+    .storage-warning-banner .swb-dismiss {
+      background: none;
+      border: none;
+      color: #fef3c7;
+      font-size: 18px;
+      line-height: 1;
+      padding: 0 2px;
+      cursor: pointer;
+      opacity: 0.7;
+    }
+    .storage-warning-banner .swb-dismiss:hover { opacity: 1; }
+
     /* ── AUTOCOMPLETE ── */
     .input-wrap {
       position: relative;
@@ -2318,6 +2359,17 @@ function showToast(msg) {
   toastTimer = setTimeout(() => el.classList.remove('show'), 2600);
 }
 
+function showStorageWarningBanner() {
+  if (document.querySelector('.storage-warning-banner')) return;
+  const banner = document.createElement('div');
+  banner.className = 'storage-warning-banner';
+  banner.innerHTML =
+    '<span class="swb-msg">Storage full — last change may not have saved. Export a backup to avoid losing data.</span>' +
+    '<button class="swb-export" onclick="exportBackup()">Export backup</button>' +
+    '<button class="swb-dismiss" aria-label="Dismiss" onclick="this.closest(\'.storage-warning-banner\').remove()">✕</button>';
+  document.body.prepend(banner);
+}
+
 // ════════════════════════════════════════════
 // NOTE PANEL
 // ════════════════════════════════════════════
@@ -2863,8 +2915,20 @@ let idbAvailable = true;
   const tracked    = new Set(TRACKED_KEYS);
 
   localStorage.setItem = function (key, value) {
-    origSet(key, value);
-    if (tracked.has(key)) idbSet(key, value).catch(() => {});
+    try {
+      origSet(key, value);
+      if (tracked.has(key)) idbSet(key, value).catch(() => {});
+    } catch (e) {
+      const isQuota = e.name === 'QuotaExceededError' || e.code === 22;
+      if (isQuota && tracked.has(key)) {
+        // localStorage full — try IDB as fallback; show banner only if IDB also fails
+        idbSet(key, value).catch(() => { showStorageWarningBanner(); });
+      } else if (isQuota) {
+        showStorageWarningBanner();
+      } else {
+        showToast('Save error — check your browser storage settings.');
+      }
+    }
   };
   localStorage.removeItem = function (key) {
     origRemove(key);
