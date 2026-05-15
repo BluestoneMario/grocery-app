@@ -1405,7 +1405,7 @@ async function backfillIdbFromLocalStorage() {
 // SETTINGS / BACKUP / RESTORE
 // ════════════════════════════════════════════
 
-const APP_VERSION = '1.0.2';
+const APP_VERSION = '1.0.4';
 
 function exportBackup() {
   const payload = {
