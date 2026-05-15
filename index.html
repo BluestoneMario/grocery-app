@@ -920,6 +920,10 @@
       padding-bottom: 0;
     }
 
+    .recipe-panel.open.ac-open {
+      overflow: visible;
+    }
+
     .recipe-panel.open {
       max-height: 700px;
       padding-bottom: 14px;
@@ -2635,6 +2639,7 @@ function renderAcInto(query, acEl, storeId) {
 
   acEl.innerHTML = buildAcHtml(matches, query.length, storeId);
   acEl.classList.add('open');
+  acEl.closest('.recipe-panel')?.classList.add('ac-open');
 }
 
 function renderAc(query) {
@@ -2648,12 +2653,17 @@ function closeAc() {
 
 function closeRecipeAc(recipeId) {
   const el = recipeId ? document.getElementById(`recipe-ac-${recipeId}`) : null;
-  if (el) { el.classList.remove('open'); el.innerHTML = ''; }
+  if (el) {
+    el.classList.remove('open');
+    el.innerHTML = '';
+    el.closest('.recipe-panel')?.classList.remove('ac-open');
+  }
 }
 
 function closeAllRecipeAc() {
   document.querySelectorAll('.recipe-ac.open').forEach(el => {
     el.classList.remove('open');
+    el.closest('.recipe-panel')?.classList.remove('ac-open');
     el.innerHTML = '';
   });
 }
