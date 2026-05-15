@@ -9,7 +9,7 @@
  * and clients pick up new assets on next activate.
  */
 
-const APP_VERSION = '1.0.1';
+const APP_VERSION = '1.0.2';
 const STATIC_CACHE = `marketlist-static-${APP_VERSION}`;
 const FONTS_CACHE  = `marketlist-fonts-${APP_VERSION}`;
 

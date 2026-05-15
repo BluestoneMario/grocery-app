@@ -924,6 +924,11 @@
       overflow: visible;
     }
 
+    .recipe:has(.recipe-panel.ac-open) {
+      position: relative;
+      z-index: 100;
+    }
+
     .recipe-panel.open {
       max-height: 700px;
       padding-bottom: 14px;
@@ -2892,7 +2897,7 @@ async function backfillIdbFromLocalStorage() {
 // SETTINGS / BACKUP / RESTORE
 // ════════════════════════════════════════════
 
-const APP_VERSION = '1.0.0';
+const APP_VERSION = '1.0.2';
 
 function exportBackup() {
   const payload = {
