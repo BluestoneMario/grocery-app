@@ -790,9 +790,6 @@ function recipeHtml(r) {
           <span class="recipe-name-text">${esc(r.name)}</span>
           <span class="recipe-item-count">${recipeCountLabel(r)}</span>
         </div>
-        <button class="recipe-type-badge recipe-type-${r.type || 'main'}" data-recipe-type-toggle="${r.id}">
-          ${(r.type || 'main') === 'dessert' ? 'DESSERT' : 'MAIN'}
-        </button>
         <button class="recipe-add-btn" data-recipe-add="${r.id}">+ LIST</button>
         <button class="recipe-del-btn" data-recipe-del="${r.id}">×</button>
       </div>
@@ -800,6 +797,11 @@ function recipeHtml(r) {
         <input class="recipe-name-input" data-recipe-id="${r.id}" type="text"
           value="${esc(r.name)}" maxlength="50" placeholder="Recipe name..."
           autocomplete="off" spellcheck="false">
+        <div class="recipe-type-toggle">
+          <span class="recipe-type-toggle-label">type</span>
+          <button class="recipe-type-opt recipe-type-main${(r.type || 'main') !== 'dessert' ? ' active' : ''}" data-recipe-set-type="main" data-recipe-id="${r.id}">MAIN</button>
+          <button class="recipe-type-opt recipe-type-dessert${r.type === 'dessert' ? ' active' : ''}" data-recipe-set-type="dessert" data-recipe-id="${r.id}">DESSERT</button>
+        </div>
         <div class="recipe-items-list">${recipeItemsListHtml(r)}</div>
         <div class="recipe-add-row">
           <div class="recipe-ingredient-wrap">
@@ -1158,15 +1160,18 @@ document.getElementById('recipesRoot').addEventListener('click', e => {
     return;
   }
 
-  const typeToggle = e.target.closest('[data-recipe-type-toggle]');
-  if (typeToggle) {
-    const id = typeToggle.dataset.recipeTypeToggle;
+  const setType = e.target.closest('[data-recipe-set-type]');
+  if (setType) {
+    const id = setType.dataset.recipeId;
+    const newType = setType.dataset.recipeSetType;
     const r = recipes.find(r => r.id === id);
-    if (r) {
-      r.type = (r.type || 'main') === 'main' ? 'dessert' : 'main';
+    if (r && (r.type || 'main') !== newType) {
+      r.type = newType;
       saveRecipes();
-      typeToggle.textContent = r.type === 'dessert' ? 'DESSERT' : 'MAIN';
-      typeToggle.className = `recipe-type-badge recipe-type-${r.type}`;
+      const toggle = setType.closest('.recipe-type-toggle');
+      toggle.querySelectorAll('[data-recipe-set-type]').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.recipeSetType === newType);
+      });
     }
     return;
   }

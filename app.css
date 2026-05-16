@@ -924,26 +924,40 @@ footer {
 
 .recipe-del-btn:active { color: var(--red); }
 
-.recipe-type-badge {
+.recipe-type-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 0 10px;
+}
+.recipe-type-toggle-label {
+  font-family: 'Space Mono', ui-monospace, 'SF Mono', Menlo, Monaco, Consolas, monospace;
+  font-size: 10px;
+  color: var(--text-dim);
+  letter-spacing: 0.06em;
+  margin-right: 4px;
+}
+.recipe-type-opt {
   font-family: 'Oswald', sans-serif;
   font-size: 10px;
   font-weight: 700;
   letter-spacing: 0.08em;
-  padding: 3px 8px;
+  padding: 4px 10px;
   border-radius: 3px;
-  border: 1px solid;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-dim);
   cursor: pointer;
-  flex-shrink: 0;
   user-select: none;
-  transition: opacity 0.15s;
+  transition: color 0.15s, background 0.15s, border-color 0.15s, opacity 0.15s;
 }
-.recipe-type-badge:active { opacity: 0.7; }
-.recipe-type-main {
+.recipe-type-opt:active { opacity: 0.7; }
+.recipe-type-opt.recipe-type-main.active {
   color: var(--accent);
   background: var(--accent-dim);
   border-color: var(--accent-border);
 }
-.recipe-type-dessert {
+.recipe-type-opt.recipe-type-dessert.active {
   color: var(--blue);
   background: var(--blue-dim);
   border-color: rgba(122,168,245,0.2);
