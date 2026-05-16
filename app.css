@@ -924,6 +924,37 @@ footer {
 
 .recipe-del-btn:active { color: var(--red); }
 
+.recipe-type-badge {
+  font-family: 'Oswald', sans-serif;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  padding: 3px 8px;
+  border-radius: 3px;
+  border: 1px solid;
+  cursor: pointer;
+  flex-shrink: 0;
+  user-select: none;
+  transition: opacity 0.15s;
+}
+.recipe-type-badge:active { opacity: 0.7; }
+.recipe-type-main {
+  color: var(--accent);
+  background: var(--accent-dim);
+  border-color: var(--accent-border);
+}
+.recipe-type-dessert {
+  color: var(--blue);
+  background: var(--blue-dim);
+  border-color: rgba(122,168,245,0.2);
+}
+.recipe-type-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px 4px;
+}
+
 .recipe-panel {
   max-height: 0;
   overflow: hidden;

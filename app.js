@@ -450,7 +450,7 @@ function recordTrip() {
 // ════════════════════════════════════════════
 
 function createRecipe() {
-  const r = { id: uid(), name: 'New Recipe', items: [] };
+  const r = { id: uid(), name: 'New Recipe', items: [], type: 'main' };
   recipes.unshift(r);
   saveRecipes();
   renderRecipes();
@@ -790,6 +790,9 @@ function recipeHtml(r) {
           <span class="recipe-name-text">${esc(r.name)}</span>
           <span class="recipe-item-count">${recipeCountLabel(r)}</span>
         </div>
+        <button class="recipe-type-badge recipe-type-${r.type || 'main'}" data-recipe-type-toggle="${r.id}">
+          ${(r.type || 'main') === 'dessert' ? 'DESSERT' : 'MAIN'}
+        </button>
         <button class="recipe-add-btn" data-recipe-add="${r.id}">+ LIST</button>
         <button class="recipe-del-btn" data-recipe-del="${r.id}">×</button>
       </div>
@@ -824,7 +827,20 @@ function renderRecipes() {
         <div class="recipes-empty-msg">No recipes yet.<br>Create one to quickly add items to your list.</div>
       </div>`;
   } else {
-    root.innerHTML = toolbar + recipes.map(recipeHtml).join('');
+    const mains    = recipes.filter(r => (r.type || 'main') !== 'dessert');
+    const desserts = recipes.filter(r => r.type === 'dessert');
+    const hasGroups = mains.length > 0 && desserts.length > 0;
+
+    let body = '';
+    if (mains.length > 0) {
+      if (hasGroups) body += `<div class="recipe-type-header">main dishes</div>`;
+      body += mains.map(recipeHtml).join('');
+    }
+    if (desserts.length > 0) {
+      if (hasGroups) body += `<div class="recipe-type-header">desserts</div>`;
+      body += desserts.map(recipeHtml).join('');
+    }
+    root.innerHTML = toolbar + body;
   }
 }
 
@@ -1138,6 +1154,19 @@ document.getElementById('recipesRoot').addEventListener('click', e => {
       input.value = acItem.dataset.fill;
       closeRecipeAc(input.dataset.recipeId);
       input.focus();
+    }
+    return;
+  }
+
+  const typeToggle = e.target.closest('[data-recipe-type-toggle]');
+  if (typeToggle) {
+    const id = typeToggle.dataset.recipeTypeToggle;
+    const r = recipes.find(r => r.id === id);
+    if (r) {
+      r.type = (r.type || 'main') === 'main' ? 'dessert' : 'main';
+      saveRecipes();
+      typeToggle.textContent = r.type === 'dessert' ? 'DESSERT' : 'MAIN';
+      typeToggle.className = `recipe-type-badge recipe-type-${r.type}`;
     }
     return;
   }
