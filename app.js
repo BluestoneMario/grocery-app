@@ -438,7 +438,7 @@ function recordTrip() {
 
   if (histChanged) saveHistory();
 
-  state.items   = [];
+  state.items = state.items.filter(i => !i.checked);
   state.session = { id: uid(), storeId: state.currentStoreId, order: [] };
   saveState();
   render();
@@ -718,7 +718,7 @@ function render() {
           <span class="section-line"></span>
         </div>`;
     }
-    html += knownItems.map(itemHtml).join('');
+    html += knownItems.map(item => itemHtml(item)).join('');
     html += `</div>`;
   }
 
@@ -744,7 +744,7 @@ function render() {
         <span class="section-count">${checked.length}</span>
         <span class="section-line"></span>
       </div>`;
-    html += checked.map(itemHtml).join('');
+    html += checked.map(item => itemHtml(item)).join('');
     html += `</div>`;
   }
 
