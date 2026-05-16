@@ -27,6 +27,10 @@ let dragEl     = null;
 let dragClone  = null;
 let dragOffY   = 0;
 
+// Most recently added item id — consumed once by the next render() to stamp
+// data-new="true" for the highlightFade animation, then cleared.
+let lastAddedId = null;
+
 function uid() {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 }
@@ -347,7 +351,9 @@ function addItem(name, zone) {
   if (existing) {
     showToast(`${existing.name} is already on the list`);
   } else {
-    insertItem({ id: uid(), name, checked: false, comment: '' });
+    const newItem = { id: uid(), name, checked: false, comment: '' };
+    insertItem(newItem);
+    lastAddedId = newItem.id;
   }
   if (!state.ordered) state.ordered = true;
   saveState();
@@ -361,12 +367,22 @@ function toggleItem(id) {
   if (!item.checked) {
     item.checked = true;
     if (!state.session.order.includes(id)) state.session.order.push(id);
+    // Defer the destructive re-render so the row can play its collapse
+    // animation in place — mirrors the pattern used in removeItem().
+    const el = document.querySelector(`.item[data-id="${id}"]`);
+    if (el) {
+      el.classList.add('checking');
+      setTimeout(() => { saveState(); render(); }, 200);
+    } else {
+      saveState();
+      render();
+    }
   } else {
     item.checked = false;
     state.session.order = state.session.order.filter(x => x !== id);
+    saveState();
+    render();
   }
-  saveState();
-  render();
 }
 
 function removeItem(id) {
@@ -622,8 +638,10 @@ function itemHtml(item, draggable = true) {
           </svg>
         </div>` : '';
 
+  const newAttr = item.id === lastAddedId ? ' data-new="true"' : '';
+
   return `
-    <div class="${cls}" data-id="${item.id}">
+    <div class="${cls}" data-id="${item.id}"${newAttr}>
       <div class="item-main">
         ${dragHandleHtml}
         <div class="cb" data-toggle="${item.id}" role="checkbox" aria-checked="${item.checked}" aria-label="Toggle ${esc(item.name)}">
@@ -749,6 +767,7 @@ function render() {
   }
 
   root.innerHTML = html;
+  lastAddedId = null;
 
   // Persist open/closed state across re-renders
   const detailsEl = root.querySelector('.unknown-section');
@@ -1357,6 +1376,8 @@ function doAdd() {
     clearZone();
     closeAc();
     zoneRow.classList.remove('visible');
+    addInput.classList.add('success');
+    setTimeout(() => addInput.classList.remove('success'), 300);
     addInput.focus();
   }
 }
