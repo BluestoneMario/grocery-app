@@ -1146,6 +1146,7 @@ footer {
   display: none; /* shown by render() when list has items */
   align-items: center;
   justify-content: center;
+  align-self: center;
 }
 
 .reorder-btn:active { background: var(--surface2); }
@@ -1202,6 +1203,7 @@ footer {
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
+  align-self: center;
   transition: color 0.15s, border-color 0.15s, background 0.15s;
 }
 .settings-btn-header:active {
