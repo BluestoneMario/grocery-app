@@ -962,11 +962,29 @@ footer {
   background: var(--blue-dim);
   border-color: rgba(122,168,245,0.2);
 }
-.recipe-type-header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 10px 16px 4px;
+.recipe-section-header {
+  padding: 18px 16px 6px;
+}
+.recipe-section-header .section-label {
+  font-size: 11px;
+  font-weight: 700;
+}
+.recipe-section-header .section-count {
+  font-size: 10px;
+}
+.recipe-section-main .section-label,
+.recipe-section-main .section-count {
+  color: var(--accent);
+}
+.recipe-section-main .section-line {
+  background: var(--accent-border);
+}
+.recipe-section-dessert .section-label,
+.recipe-section-dessert .section-count {
+  color: var(--blue);
+}
+.recipe-section-dessert .section-line {
+  background: rgba(122,168,245,0.3);
 }
 
 .recipe-panel {

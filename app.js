@@ -833,13 +833,20 @@ function renderRecipes() {
     const desserts = recipes.filter(r => r.type === 'dessert');
     const hasGroups = mains.length > 0 && desserts.length > 0;
 
+    const sectionHeader = (label, count, variant) => `
+      <div class="section-header recipe-section-header recipe-section-${variant}">
+        <span class="section-label">${label}</span>
+        <span class="section-count">${count}</span>
+        <span class="section-line"></span>
+      </div>`;
+
     let body = '';
     if (mains.length > 0) {
-      if (hasGroups) body += `<div class="recipe-type-header">main dishes</div>`;
+      if (hasGroups) body += sectionHeader('main dishes', mains.length, 'main');
       body += mains.map(recipeHtml).join('');
     }
     if (desserts.length > 0) {
-      if (hasGroups) body += `<div class="recipe-type-header">desserts</div>`;
+      if (hasGroups) body += sectionHeader('desserts', desserts.length, 'dessert');
       body += desserts.map(recipeHtml).join('');
     }
     root.innerHTML = toolbar + body;
