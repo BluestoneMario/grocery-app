@@ -323,10 +323,18 @@ function addItem(name, zone) {
     if (!history[key].comments)    { history[key].comments = [];       histChanged = true; }
   }
 
+  if (!history[key].stores[storeId]) {
+    history[key].stores[storeId] = { zone: null, hist: [] };
+    histChanged = true;
+  }
+
+  const notAtIdx = history[key].notAt.indexOf(storeId);
+  if (notAtIdx !== -1) {
+    history[key].notAt.splice(notAtIdx, 1);
+    histChanged = true;
+  }
+
   if (zone != null) {
-    if (!history[key].stores[storeId]) {
-      history[key].stores[storeId] = { zone: null, hist: [] };
-    }
     if (history[key].stores[storeId].zone == null) {
       history[key].stores[storeId].zone = zone;
       histChanged = true;
@@ -335,7 +343,12 @@ function addItem(name, zone) {
 
   if (histChanged) saveHistory();
 
-  insertItem({ id: uid(), name, checked: false, comment: '' });
+  const existing = state.items.find(i => nameKey(i.name) === key);
+  if (existing) {
+    showToast(`${existing.name} is already on the list`);
+  } else {
+    insertItem({ id: uid(), name, checked: false, comment: '' });
+  }
   if (!state.ordered) state.ordered = true;
   saveState();
   render();
