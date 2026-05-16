@@ -1508,13 +1508,10 @@ async function backfillIdbFromLocalStorage() {
 // SETTINGS / BACKUP / RESTORE
 // ════════════════════════════════════════════
 
-const APP_VERSION = '1.0.6';
-
 function exportBackup() {
   const payload = {
     app: 'market-list',
     schema: 2,
-    appVersion: APP_VERSION,
     exportedAt: new Date().toISOString(),
     data: {
       [STORAGE_KEY]:  localStorage.getItem(STORAGE_KEY),
@@ -1645,7 +1642,18 @@ function addStore(name) {
 }
 
 function openSettings() {
-  document.getElementById('appVersionLabel').textContent = APP_VERSION;
+  const versionLabel = document.getElementById('appVersionLabel');
+  versionLabel.textContent = '—';
+  if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+    const onMsg = (e) => {
+      if (e.data && e.data.type === 'VERSION') {
+        versionLabel.textContent = e.data.version;
+        navigator.serviceWorker.removeEventListener('message', onMsg);
+      }
+    };
+    navigator.serviceWorker.addEventListener('message', onMsg);
+    navigator.serviceWorker.controller.postMessage({ type: 'GET_VERSION' });
+  }
   document.getElementById('storageStatusLabel').textContent =
     idbAvailable ? 'localStorage + IDB' : 'localStorage only';
   renderStoreListSettings();

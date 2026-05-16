@@ -26,7 +26,7 @@ You'll get a URL like `https://market-list.pages.dev`. That's your app.
 
 ### Updating later
 
-When you change a file, repeat steps in **Workers & Pages → market-list → Create deployment → Upload assets**, and re-upload the folder. Cloudflare will swap to the new version automatically. (When you update `index.html` or `sw.js`, **bump `APP_VERSION` in `sw.js`** so the service worker invalidates the old cache — otherwise users may stay on the cached version.)
+When you change a file, repeat steps in **Workers & Pages → market-list → Create deployment → Upload assets**, and re-upload the folder. Cloudflare will swap to the new version automatically. (When you update any cached asset, **bump `APP_VERSION` in `sw.js` only** — that's the single source of truth; the settings screen reads it from the service worker at runtime, so `app.js` no longer carries its own version constant. Without the bump, users may stay on the cached version.)
 
 ---
 
@@ -70,7 +70,7 @@ git commit -m "describe what you changed"
 git push
 ```
 
-The live site updates within ~60 seconds of a successful push. Remember to bump `APP_VERSION` in `sw.js` when you change `index.html` or `sw.js` so the service worker cache refreshes on users' devices.
+The live site updates within ~60 seconds of a successful push. Remember to bump `APP_VERSION` in `sw.js` (the only place it lives) when you change any cached asset so the service worker cache refreshes on users' devices.
 
 ---
 
