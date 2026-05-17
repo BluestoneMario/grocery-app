@@ -3,8 +3,15 @@
 // ════════════════════════════════════════════
 
 const DEFAULT_STORES = [
-  { id: 'grocery_main', name: 'Supermarkt', type: 'grocery' },
+  { id: 'grocery_main', name: 'Supermarkt', type: 'supermarket' },
   { id: 'dm_main',      name: 'DM',         type: 'drugstore' }
+];
+
+const STORE_TYPES = [
+  { value: 'supermarket', label: 'Supermarket' },
+  { value: 'drugstore',   label: 'Drugstore' },
+  { value: 'pharmacy',    label: 'Pharmacy' },
+  { value: 'other',       label: 'Other' },
 ];
 
 let state = {
@@ -132,6 +139,12 @@ function load() {
     }
   } catch (_) {
     storeRegistry = DEFAULT_STORES.map(s => ({ ...s }));
+    saveStores();
+  }
+
+  // One-time migration: legacy 'grocery' type becomes 'supermarket'.
+  if (storeRegistry.some(s => s.type === 'grocery')) {
+    storeRegistry.forEach(s => { if (s.type === 'grocery') s.type = 'supermarket'; });
     saveStores();
   }
 
@@ -272,6 +285,12 @@ function indicator(item, storeId) {
     const names = { 0.1: 'ENT', 0.4: 'MID', 0.7: 'BCK', 0.9: 'CHK' };
     return { cls: 'zone', label: names[sh.zone] ?? '~', tip: 'zone estimate' };
   }
+  const inferredFrom = getInferredStore(item, storeId);
+  if (inferredFrom) {
+    const src = storeRegistry.find(s => s.id === inferredFrom);
+    const shortName = (src?.name || '').slice(0, 3) || '?';
+    return { cls: 'inferred', label: `~${shortName}`, tip: `Inferred from ${src?.name || 'another store'}` };
+  }
   return { cls: 'none', label: '—', tip: 'no data' };
 }
 
@@ -288,6 +307,22 @@ function getAvailability(item, storeId) {
   if (h && h.notAt && h.notAt.includes(storeId)) return 'unavailable';
   if (h && h.stores && h.stores[storeId]) return 'known';
   return 'unknown';
+}
+
+// If item is unknown at `storeId` but explicitly known at another store of the
+// same type (and not on `notAt`), return that source storeId so callers can
+// surface an inferred-availability badge. Otherwise null.
+function getInferredStore(item, storeId) {
+  const h = history[nameKey(item.name)];
+  if (h && h.notAt && h.notAt.includes(storeId)) return null;
+  if (getAvailability(item, storeId) === 'known') return null;
+  const currentStore = storeRegistry.find(s => s.id === storeId);
+  if (!currentStore || currentStore.type === 'other') return null;
+  const sameType = storeRegistry.filter(s => s.id !== storeId && s.type === currentStore.type);
+  for (const s of sameType) {
+    if (getAvailability(item, s.id) === 'known') return s.id;
+  }
+  return null;
 }
 
 // ════════════════════════════════════════════
@@ -694,12 +729,19 @@ function render() {
 
   const unchecked    = all.filter(i => !i.checked);
   const knownItems   = unchecked.filter(i => getAvailability(i, storeId) === 'known');
-  const unknownItems = unchecked.filter(i => getAvailability(i, storeId) === 'unknown');
+  const unknownRaw   = unchecked.filter(i => getAvailability(i, storeId) === 'unknown');
+  const inferredItems = unknownRaw.filter(i => getInferredStore(i, storeId) !== null);
+  const unknownItems  = unknownRaw.filter(i => getInferredStore(i, storeId) === null);
+  // "To Get" = known items, then inferred items at the tail (score 0.95 region,
+  // just before truly unknown items in the collapsible section).
+  const toGetItems = [...knownItems, ...inferredItems];
   // unavailable items are not rendered
 
   const total = all.length;
 
-  // Reorder button: show only when ≥2 known items; unknown items excluded from drag-reorder
+  // Reorder button: show only when ≥2 confirmed-known items; inferred and
+  // unknown items are excluded from drag-reorder because their positions
+  // aren't trustworthy data for this store.
   const reorderBtn = document.getElementById('reorderBtn');
   if (reorderBtn && currentView === 'list') {
     const show = knownItems.length > 1;
@@ -732,18 +774,18 @@ function render() {
 
   let html = '';
 
-  // Known items section
-  if (knownItems.length > 0) {
+  // To-Get section: confirmed-known items first, inferred items tacked on at the end
+  if (toGetItems.length > 0) {
     html += `<div class="list-section">`;
     if (checked.length > 0 || unknownItems.length > 0) {
       html += `
         <div class="section-header">
           <span class="section-label">to get</span>
-          <span class="section-count">${knownItems.length}</span>
+          <span class="section-count">${toGetItems.length}</span>
           <span class="section-line"></span>
         </div>`;
     }
-    html += knownItems.map(item => itemHtml(item)).join('');
+    html += toGetItems.map(item => itemHtml(item)).join('');
     html += `</div>`;
   }
 
@@ -1717,12 +1759,29 @@ function resetAll() {
 function renderStoreListSettings() {
   const el = document.getElementById('storeListSettings');
   if (!el) return;
-  el.innerHTML = storeRegistry.map(s => `
+  el.innerHTML = storeRegistry.map(s => {
+    const currentType = STORE_TYPES.some(t => t.value === s.type) ? s.type : 'other';
+    const opts = STORE_TYPES.map(t =>
+      `<option value="${t.value}"${t.value === currentType ? ' selected' : ''}>${esc(t.label)}</option>`
+    ).join('');
+    return `
     <div class="store-edit-row">
       <input class="store-name-edit" data-store-id="${esc(s.id)}"
         value="${esc(s.name)}" maxlength="30"
         autocomplete="off" spellcheck="false">
-    </div>`).join('');
+      <select class="store-type-edit" data-store-id="${esc(s.id)}" aria-label="Store type">${opts}</select>
+    </div>`;
+  }).join('');
+}
+
+function setStoreType(id, newType) {
+  const s = storeRegistry.find(s => s.id === id);
+  if (!s) return;
+  if (!STORE_TYPES.some(t => t.value === newType)) return;
+  if (s.type === newType) return;
+  s.type = newType;
+  saveStores();
+  render();
 }
 
 function renameStore(id, name) {
@@ -1739,7 +1798,7 @@ function addStore(name) {
   name = name.trim();
   if (!name) return;
   const id = 'store_' + uid();
-  storeRegistry.push({ id, name, type: 'grocery' });
+  storeRegistry.push({ id, name, type: 'supermarket' });
   saveStores();
   renderStoreListSettings();
   renderStoreSwitcher();
@@ -1797,6 +1856,11 @@ document.getElementById('storeListSettings').addEventListener('blur', e => {
   const input = e.target.closest('.store-name-edit');
   if (input) renameStore(input.dataset.storeId, input.value);
 }, true);
+
+document.getElementById('storeListSettings').addEventListener('change', e => {
+  const sel = e.target.closest('.store-type-edit');
+  if (sel) setStoreType(sel.dataset.storeId, sel.value);
+});
 
 document.getElementById('storeListSettings').addEventListener('keydown', e => {
   const input = e.target.closest('.store-name-edit');

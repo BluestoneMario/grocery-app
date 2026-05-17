@@ -505,6 +505,13 @@ main {
   border: 1px solid transparent;
 }
 
+.sort-badge.inferred {
+  color: var(--text-muted);
+  background: transparent;
+  border: 1px dashed var(--border);
+  letter-spacing: 0.04em;
+}
+
 /* Delete */
 .del-btn {
   background: none;
@@ -1539,6 +1546,21 @@ footer {
 }
 
 .store-name-edit:focus { border-color: var(--accent-border); }
+
+.store-type-edit {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text-muted);
+  font-family: 'Space Mono', ui-monospace, 'SF Mono', Menlo, Monaco, Consolas, monospace;
+  font-size: 11px;
+  padding: 6px 8px;
+  outline: none;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: border-color 0.2s, color 0.2s;
+}
+.store-type-edit:focus { border-color: var(--accent-border); color: var(--text); }
 
 @media (max-width: 768px) {
   input, textarea {
