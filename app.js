@@ -1772,10 +1772,121 @@ document.getElementById('storeListSettings').addEventListener('keydown', e => {
 if ('serviceWorker' in navigator) {
   // Register after load so we don't compete with first-paint.
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('sw.js').catch((err) => {
+    navigator.serviceWorker.register('sw.js').then((reg) => {
+      let reloading = false;
+      const reloadOnce = () => {
+        if (reloading) return;
+        reloading = true;
+        location.reload();
+      };
+
+      // Startup check: a worker is already waiting from a previous session.
+      // Activate it silently before the user touches anything.
+      if (reg.waiting && navigator.serviceWorker.controller) {
+        navigator.serviceWorker.addEventListener('controllerchange', reloadOnce);
+        reg.waiting.postMessage({ type: 'SKIP_WAITING' });
+        return;
+      }
+
+      reg.addEventListener('updatefound', () => {
+        const installing = reg.installing;
+        if (!installing) return;
+        installing.addEventListener('statechange', () => {
+          if (installing.state !== 'installed') return;
+          // No existing controller => first install, nothing to update.
+          if (!navigator.serviceWorker.controller) return;
+          showUpdateBanner(reg, reloadOnce);
+        });
+      });
+    }).catch((err) => {
       console.warn('[app] service worker registration failed:', err);
     });
   });
+}
+
+function showUpdateBanner(reg, reloadOnce) {
+  if (document.getElementById('sw-update-banner')) return;
+
+  const banner = document.createElement('div');
+  banner.id = 'sw-update-banner';
+  Object.assign(banner.style, {
+    position: 'fixed',
+    left: '12px',
+    right: '12px',
+    bottom: '12px',
+    zIndex: '300',
+    background: 'var(--surface, #1a1a1a)',
+    color: 'var(--text, #f0ebe0)',
+    border: '1px solid var(--accent-border, rgba(232,160,32,0.3))',
+    borderRadius: 'var(--radius, 5px)',
+    boxShadow: '0 4px 18px rgba(0,0,0,0.55)',
+    padding: '12px 14px',
+    display: 'flex',
+    alignItems: 'center',
+    gap: '10px',
+    fontFamily: "'Space Mono', ui-monospace, 'SF Mono', Menlo, Monaco, Consolas, monospace",
+    fontSize: '12px',
+    lineHeight: '1.4',
+  });
+
+  const msg = document.createElement('span');
+  msg.textContent = 'An update is available';
+  msg.style.flex = '1';
+
+  const updateBtn = document.createElement('button');
+  updateBtn.type = 'button';
+  updateBtn.textContent = 'Update now';
+  Object.assign(updateBtn.style, {
+    background: 'var(--accent, #e8a020)',
+    color: '#000',
+    border: 'none',
+    borderRadius: 'var(--radius, 5px)',
+    fontFamily: "'Oswald', Impact, 'Helvetica Neue Condensed', 'Arial Narrow', sans-serif",
+    fontSize: '13px',
+    fontWeight: '700',
+    letterSpacing: '0.06em',
+    padding: '8px 12px',
+    cursor: 'pointer',
+  });
+
+  const dismissBtn = document.createElement('button');
+  dismissBtn.type = 'button';
+  dismissBtn.setAttribute('aria-label', 'Dismiss update notice');
+  dismissBtn.textContent = '×';
+  Object.assign(dismissBtn.style, {
+    background: 'transparent',
+    color: 'var(--text-muted, #777)',
+    border: '1px solid var(--border, #2e2e2e)',
+    borderRadius: 'var(--radius, 5px)',
+    fontFamily: 'inherit',
+    fontSize: '14px',
+    lineHeight: '1',
+    width: '28px',
+    height: '28px',
+    cursor: 'pointer',
+  });
+
+  updateBtn.addEventListener('click', () => {
+    updateBtn.disabled = true;
+    updateBtn.textContent = 'Updating...';
+    navigator.serviceWorker.addEventListener('controllerchange', reloadOnce);
+    // Read reg.waiting at click time — a fresh worker may have arrived since the banner showed.
+    const waiting = reg.waiting;
+    if (waiting) {
+      waiting.postMessage({ type: 'SKIP_WAITING' });
+    } else {
+      // No waiting worker right now — controllerchange will still fire when one activates.
+    }
+  });
+
+  dismissBtn.addEventListener('click', () => {
+    banner.remove();
+  });
+
+  banner.appendChild(msg);
+  banner.appendChild(updateBtn);
+  banner.appendChild(dismissBtn);
+  document.body.appendChild(banner);
 }
 
 // ════════════════════════════════════════════
