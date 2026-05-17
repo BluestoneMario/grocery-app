@@ -420,21 +420,40 @@ function toggleItem(id) {
   }
 }
 
+// IDs of items waiting on the undo window. render() reapplies the
+// .item--pending-delete class to these rows so unrelated re-renders
+// (add item, toggle, switch store) don't visually unhide a row that's
+// still in soft-delete limbo.
+const pendingDeleteIds = new Set();
+
 function removeItem(id) {
+  const item = state.items.find(i => i.id === id);
+  if (!item) return;
+  if (pendingDeleteIds.has(id)) return;
+
+  // Commit any prior pending delete first so its render() doesn't clobber the
+  // .item--pending-delete class we're about to set on this row.
+  flushPendingToastAction();
+
+  pendingDeleteIds.add(id);
   const el = document.querySelector(`.item[data-id="${id}"]`);
-  if (el) {
-    el.classList.add('removing');
-    el.addEventListener('animationend', () => {
+  if (el) el.classList.add('item--pending-delete');
+
+  showToast(`Removed ${item.name}`, {
+    label: 'UNDO',
+    onClick: () => {
+      pendingDeleteIds.delete(id);
+      const liveEl = document.querySelector(`.item[data-id="${id}"]`);
+      if (liveEl) liveEl.classList.remove('item--pending-delete');
+    },
+    onTimeout: () => {
+      pendingDeleteIds.delete(id);
       state.items = state.items.filter(i => i.id !== id);
       state.session.order = state.session.order.filter(x => x !== id);
       saveState();
       render();
-    }, { once: true });
-  } else {
-    state.items = state.items.filter(i => i.id !== id);
-    saveState();
-    render();
-  }
+    },
+  });
 }
 
 // recordTrip() saves each checked item's position in the trip to its per-store
@@ -872,6 +891,12 @@ function render() {
   root.innerHTML = html;
   lastAddedId = null;
 
+  // Reapply soft-delete visual state to any row still in the undo window.
+  pendingDeleteIds.forEach(id => {
+    const pEl = root.querySelector(`.item[data-id="${id}"]`);
+    if (pEl) pEl.classList.add('item--pending-delete');
+  });
+
   // Persist open/closed state across re-renders
   const detailsEl = root.querySelector('.unknown-section');
   if (detailsEl) {
@@ -1058,12 +1083,57 @@ function renderView() {
 // ════════════════════════════════════════════
 
 let toastTimer;
-function showToast(msg) {
+// Pending action attached to the currently-visible toast. Resolves with onTimeout
+// when the toast naturally expires (or is replaced by another toast). Cleared
+// without onTimeout when the user taps the toast's action button.
+let pendingToastAction = null;
+
+function flushPendingToastAction() {
+  const p = pendingToastAction;
+  pendingToastAction = null;
+  if (p && !p.resolved && typeof p.onTimeout === 'function') {
+    p.resolved = true;
+    p.onTimeout();
+  }
+}
+
+function showToast(msg, action) {
+  // If a previous toast had a deferred action and is being replaced, commit it
+  // now — the user has effectively moved on.
+  flushPendingToastAction();
+
   const el = document.getElementById('toast');
-  el.textContent = msg;
+  el.innerHTML = '';
+  const msgSpan = document.createElement('span');
+  msgSpan.className = 'toast-msg';
+  msgSpan.textContent = msg;
+  el.appendChild(msgSpan);
+
+  if (action && action.label && typeof action.onClick === 'function') {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'toast-action';
+    btn.textContent = action.label;
+    btn.addEventListener('click', () => {
+      if (pendingToastAction) pendingToastAction.resolved = true;
+      pendingToastAction = null;
+      clearTimeout(toastTimer);
+      el.classList.remove('show');
+      action.onClick();
+    });
+    el.appendChild(btn);
+
+    if (typeof action.onTimeout === 'function') {
+      pendingToastAction = { onTimeout: action.onTimeout, resolved: false };
+    }
+  }
+
   el.classList.add('show');
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => el.classList.remove('show'), 2600);
+  toastTimer = setTimeout(() => {
+    el.classList.remove('show');
+    flushPendingToastAction();
+  }, 2600);
 }
 
 function showStorageWarningBanner() {
