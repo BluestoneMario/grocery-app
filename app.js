@@ -563,6 +563,12 @@ function addRecipeToList(recipeId) {
 function renderStoreSwitcher() {
   const el = document.getElementById('storeSwitcher');
   if (!el) return;
+  if (currentView === 'recipes') {
+    el.classList.add('store-switcher--recipes');
+    el.innerHTML = `<button class="new-recipe-btn" data-new-recipe>+ NEW RECIPE</button>`;
+    return;
+  }
+  el.classList.remove('store-switcher--recipes');
   el.innerHTML = storeRegistry.map(s =>
     `<button class="store-pill${s.id === state.currentStoreId ? ' active' : ''}" data-switch-store="${esc(s.id)}">${esc(s.name)}</button>`
   ).join('');
@@ -842,10 +848,9 @@ function recipeHtml(r) {
 
 function renderRecipes() {
   const root = document.getElementById('recipesRoot');
-  const toolbar = `<div class="recipes-toolbar"><button class="new-recipe-btn" id="newRecipeBtn">+ NEW RECIPE</button></div>`;
 
   if (recipes.length === 0) {
-    root.innerHTML = toolbar + `
+    root.innerHTML = `
       <div class="recipes-empty">
         <div class="recipes-empty-glyph">RECIPES</div>
         <div class="recipes-empty-msg">No recipes yet.<br>Create one to quickly add items to your list.</div>
@@ -871,7 +876,7 @@ function renderRecipes() {
       if (hasGroups) body += sectionHeader('desserts', desserts.length, 'dessert');
       body += desserts.map(recipeHtml).join('');
     }
-    root.innerHTML = toolbar + body;
+    root.innerHTML = body;
   }
 }
 
@@ -1169,8 +1174,6 @@ document.getElementById('listRoot').addEventListener('input', e => {
 // ════════════════════════════════════════════
 
 document.getElementById('recipesRoot').addEventListener('click', e => {
-  if (e.target.closest('#newRecipeBtn')) { createRecipe(); return; }
-
   const recipeAdd = e.target.closest('[data-recipe-add]');
   if (recipeAdd) { addRecipeToList(recipeAdd.dataset.recipeAdd); return; }
 
@@ -1385,6 +1388,7 @@ document.addEventListener('pointerdown', e => {
 });
 
 document.getElementById('storeSwitcher').addEventListener('click', e => {
+  if (e.target.closest('[data-new-recipe]')) { createRecipe(); return; }
   const pill = e.target.closest('[data-switch-store]');
   if (pill) switchStore(pill.dataset.switchStore);
 });
