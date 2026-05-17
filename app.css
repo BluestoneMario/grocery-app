@@ -953,6 +953,59 @@ footer {
 
 .recipe-del-btn:active { color: var(--red); }
 
+.recipe-edit-btn {
+  background: transparent;
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-family: 'Oswald', Impact, 'Helvetica Neue Condensed', 'Arial Narrow', sans-serif;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  padding: 5px 10px;
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: border-color 0.15s, color 0.15s;
+  user-select: none;
+}
+.recipe-edit-btn:active { border-color: var(--text-muted); color: var(--text); }
+
+.recipe-done-btn {
+  background: var(--accent);
+  color: #000;
+  border: 1px solid var(--accent);
+  border-radius: var(--radius);
+  font-family: 'Oswald', Impact, 'Helvetica Neue Condensed', 'Arial Narrow', sans-serif;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  padding: 5px 10px;
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: opacity 0.15s;
+  user-select: none;
+}
+.recipe-done-btn:active { opacity: 0.85; }
+
+/* ── Edit-mode visibility gates ── */
+/* View mode (default) hides edit-only chrome */
+.recipe:not(.recipe--editing) .recipe-done-btn,
+.recipe:not(.recipe--editing) .recipe-del-btn,
+.recipe:not(.recipe--editing) .recipe-name-input,
+.recipe:not(.recipe--editing) .recipe-type-toggle,
+.recipe:not(.recipe--editing) .recipe-add-row,
+.recipe:not(.recipe--editing) .recipe-item-remove { display: none; }
+
+/* Edit mode hides view-only chrome */
+.recipe.recipe--editing .recipe-edit-btn,
+.recipe.recipe--editing .recipe-add-btn,
+.recipe.recipe--editing .recipe-item-cb { display: none; }
+
+/* In view mode the name input is gone, so re-add a small top breath. */
+.recipe:not(.recipe--editing) .recipe-panel.open { padding-top: 4px; }
+
 .recipe-type-toggle {
   display: flex;
   align-items: center;

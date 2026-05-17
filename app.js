@@ -472,6 +472,7 @@ function createRecipe() {
   renderRecipes();
   setTimeout(() => {
     openRecipePanel(r.id);
+    setRecipeEditing(r.id, true);
     const nameInput = document.querySelector(`.recipe-name-input[data-recipe-id="${r.id}"]`);
     if (nameInput) { nameInput.focus(); nameInput.select(); }
   }, 60);
@@ -810,6 +811,8 @@ function recipeHtml(r) {
           <span class="recipe-item-count">${recipeCountLabel(r)}</span>
         </div>
         <button class="recipe-add-btn" data-recipe-add="${r.id}">+ LIST</button>
+        <button class="recipe-edit-btn" data-recipe-edit-toggle="${r.id}">EDIT</button>
+        <button class="recipe-done-btn" data-recipe-edit-toggle="${r.id}">DONE</button>
         <button class="recipe-del-btn" data-recipe-del="${r.id}">×</button>
       </div>
       <div class="recipe-panel" id="recipe-panel-${r.id}">
@@ -883,8 +886,19 @@ function refreshRecipeItemsDOM(recipeId) {
   if (countEl) countEl.textContent = recipeCountLabel(r);
 }
 
+function clearAllRecipeEditing() {
+  document.querySelectorAll('.recipe.recipe--editing').forEach(el => el.classList.remove('recipe--editing'));
+}
+
+function setRecipeEditing(id, editing) {
+  const recipeEl = document.querySelector(`.recipe[data-recipe-id="${id}"]`);
+  if (!recipeEl) return;
+  recipeEl.classList.toggle('recipe--editing', editing);
+}
+
 function openRecipePanel(id) {
   document.querySelectorAll('.recipe-panel.open').forEach(p => p.classList.remove('open'));
+  clearAllRecipeEditing();
   const panel = document.getElementById(`recipe-panel-${id}`);
   if (panel) panel.classList.add('open');
 }
@@ -894,6 +908,7 @@ function toggleRecipePanel(id) {
   if (!panel) return;
   const opening = !panel.classList.contains('open');
   document.querySelectorAll('.recipe-panel.open').forEach(p => p.classList.remove('open'));
+  clearAllRecipeEditing();
   closeAllRecipeAc();
   if (opening) panel.classList.add('open');
 }
@@ -1161,6 +1176,29 @@ document.getElementById('recipesRoot').addEventListener('click', e => {
 
   const recipeDel = e.target.closest('[data-recipe-del]');
   if (recipeDel) { deleteRecipe(recipeDel.dataset.recipeDel); return; }
+
+  const editToggle = e.target.closest('[data-recipe-edit-toggle]');
+  if (editToggle) {
+    const id = editToggle.dataset.recipeEditToggle;
+    const recipeEl = document.querySelector(`.recipe[data-recipe-id="${id}"]`);
+    if (recipeEl) {
+      const willEdit = !recipeEl.classList.contains('recipe--editing');
+      if (willEdit) {
+        // Ensure this card's panel is open (EDIT can be clicked from the closed-card header).
+        const panel = document.getElementById(`recipe-panel-${id}`);
+        if (panel && !panel.classList.contains('open')) {
+          document.querySelectorAll('.recipe-panel.open').forEach(p => p.classList.remove('open'));
+          closeAllRecipeAc();
+          panel.classList.add('open');
+        }
+        document.querySelectorAll('.recipe.recipe--editing').forEach(el => {
+          if (el !== recipeEl) el.classList.remove('recipe--editing');
+        });
+      }
+      recipeEl.classList.toggle('recipe--editing', willEdit);
+    }
+    return;
+  }
 
   const riToggle = e.target.closest('[data-ri-toggle]');
   if (riToggle) { riToggle.classList.toggle('active'); return; }
