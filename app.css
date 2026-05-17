@@ -365,7 +365,22 @@ main {
   word-break: break-word;
   transition: color 0.2s;
   position: relative;
+  cursor: pointer;
 }
+
+.item-rename-input {
+  width: 100%;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text);
+  font-family: 'Space Mono', ui-monospace, 'SF Mono', Menlo, Monaco, Consolas, monospace;
+  font-size: 12px;
+  padding: 7px 10px;
+  outline: none;
+  transition: border-color 0.2s;
+}
+.item-rename-input:focus { border-color: var(--accent-border); }
 
 .item.checked .item-name {
   color: var(--text-muted);

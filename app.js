@@ -426,6 +426,66 @@ function toggleItem(id) {
 // still in soft-delete limbo.
 const pendingDeleteIds = new Set();
 
+// Only one item can be in rename mode at a time. The id is null when no
+// rename is active. Re-entrant calls (starting a new rename while another
+// is in flight) commit the prior one first.
+let currentRenameItemId = null;
+
+function startRenameItem(id) {
+  if (currentRenameItemId === id) return;
+  if (currentRenameItemId) commitRenameItem();
+
+  const item = state.items.find(i => i.id === id);
+  if (!item) return;
+  const itemEl = document.querySelector(`.item[data-id="${id}"]`);
+  if (!itemEl) return;
+  const nameEl = itemEl.querySelector('.item-name');
+  if (!nameEl) return;
+
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.className = 'item-rename-input';
+  input.value = item.name;
+  input.maxLength = 60;
+  input.autocomplete = 'off';
+  input.spellcheck = false;
+  input.dataset.itemId = id;
+  nameEl.replaceWith(input);
+
+  currentRenameItemId = id;
+  input.focus();
+  input.select();
+}
+
+function commitRenameItem() {
+  if (!currentRenameItemId) return;
+  const id = currentRenameItemId;
+  currentRenameItemId = null;
+  const input = document.querySelector(`.item-rename-input[data-item-id="${id}"]`);
+  const item = state.items.find(i => i.id === id);
+  if (!input || !item) { render(); return; }
+
+  const newName = input.value.trim();
+  if (!newName || newName === item.name) { render(); return; }
+
+  const oldKey = nameKey(item.name);
+  const newKey = nameKey(newName);
+  if (oldKey !== newKey && history[oldKey]) {
+    history[newKey] = history[oldKey];
+    delete history[oldKey];
+  }
+  item.name = newName;
+  saveState();
+  saveHistory();
+  render();
+}
+
+function cancelRenameItem() {
+  if (!currentRenameItemId) return;
+  currentRenameItemId = null;
+  render();
+}
+
 function removeItem(id) {
   const item = state.items.find(i => i.id === id);
   if (!item) return;
@@ -1305,8 +1365,27 @@ document.getElementById('listRoot').addEventListener('click', e => {
   if (toggleTarget) { toggleItem(toggleTarget.dataset.toggle); return; }
 
   const deleteTarget = e.target.closest('[data-delete]');
-  if (deleteTarget) { removeItem(deleteTarget.dataset.delete); }
+  if (deleteTarget) { removeItem(deleteTarget.dataset.delete); return; }
+
+  // Direct tap on the name span enters rename mode. Only matches the span
+  // itself (not .item-main), so the checkbox tap target stays unaffected.
+  const nameTarget = e.target.closest('.item-name');
+  if (nameTarget) {
+    const itemEl = nameTarget.closest('.item');
+    if (itemEl) startRenameItem(itemEl.dataset.id);
+  }
 });
+
+document.getElementById('listRoot').addEventListener('keydown', e => {
+  const input = e.target.closest('.item-rename-input');
+  if (!input) return;
+  if (e.key === 'Enter')       { e.preventDefault(); commitRenameItem(); }
+  else if (e.key === 'Escape') { e.preventDefault(); cancelRenameItem(); }
+});
+
+document.getElementById('listRoot').addEventListener('blur', e => {
+  if (e.target.closest('.item-rename-input')) commitRenameItem();
+}, true);
 
 document.getElementById('listRoot').addEventListener('input', e => {
   const noteInput = e.target.closest('.note-input');
