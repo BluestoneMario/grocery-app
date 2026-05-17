@@ -729,6 +729,24 @@ footer {
 
 .btn-confirm:active { opacity: 0.85; }
 
+.btn-confirm.btn-danger {
+  background: var(--red);
+  color: #fff;
+}
+
+/* Stack confirm overlay above the trip-end and settings overlays. */
+.overlay-confirm { z-index: 60; }
+
+/* Inline add-store form inside the settings dialog. The shared
+   .store-add-form layout already fits, but the settings dialog has
+   more room than the header — give the inputs/buttons a little
+   breathing space so they don't feel cramped next to the .settings-btn
+   rhythm. */
+.settings-store-add-form .store-add-name { font-size: 13px; padding: 7px 11px; }
+.settings-store-add-form .store-add-type-opt { font-size: 10px; padding: 5px 7px; }
+.settings-store-add-form .store-add-confirm,
+.settings-store-add-form .store-add-cancel { padding: 5px 11px; font-size: 14px; }
+
 /* ── TOAST ── */
 .toast {
   position: fixed;

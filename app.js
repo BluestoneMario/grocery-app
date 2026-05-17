@@ -1751,7 +1751,7 @@ function exportBackup() {
 
 function importBackupFile(file) {
   const reader = new FileReader();
-  reader.onload = () => {
+  reader.onload = async () => {
     let payload;
     try { payload = JSON.parse(String(reader.result)); }
     catch (_) { showToast('Invalid backup file'); return; }
@@ -1760,7 +1760,12 @@ function importBackupFile(file) {
       showToast('Not a Market List backup'); return;
     }
 
-    const ok = confirm('Replace your current list, history, recipes and store settings with this backup? This cannot be undone.');
+    const ok = await showConfirmDialog({
+      title: 'Restore backup?',
+      message: 'Replace your current list, history, recipes and store settings with this backup.<br>This cannot be undone.',
+      confirmLabel: 'RESTORE',
+      danger: true,
+    });
     if (!ok) return;
 
     // Restore the keys that are present in this backup
@@ -1814,8 +1819,13 @@ async function forceUpdate() {
   location.reload();
 }
 
-function resetAll() {
-  const ok = confirm('Delete EVERYTHING — list, history, recipes, store settings? This cannot be undone (unless you have a backup).');
+async function resetAll() {
+  const ok = await showConfirmDialog({
+    title: 'Reset all data?',
+    message: 'Delete EVERYTHING — list, history, recipes, store settings.<br>This cannot be undone (unless you have a backup).',
+    confirmLabel: 'RESET',
+    danger: true,
+  });
   if (!ok) return;
   history = {};
   recipes = [];
@@ -1865,14 +1875,91 @@ function renameStore(id, name) {
   renderStoreSwitcher();
 }
 
-function addStore(name) {
+function addStore(name, type = 'supermarket') {
   name = name.trim();
   if (!name) return;
+  if (!STORE_TYPES.some(t => t.value === type)) type = 'supermarket';
   const id = 'store_' + uid();
-  storeRegistry.push({ id, name, type: 'supermarket' });
+  storeRegistry.push({ id, name, type });
   saveStores();
   renderStoreListSettings();
   renderStoreSwitcher();
+}
+
+function showSettingsAddStoreForm() {
+  const slot = document.getElementById('addStoreSlot');
+  if (!slot) return;
+  addingStoreType = 'supermarket';
+  const typeBtns = STORE_TYPES.map(t =>
+    `<button class="store-add-type-opt${t.value === addingStoreType ? ' active' : ''}" data-settings-form-type="${t.value}">${STORE_TYPE_SHORT[t.value]}</button>`
+  ).join('');
+  slot.innerHTML = `
+    <div class="store-add-form settings-store-add-form">
+      <input class="store-add-name" type="text" placeholder="Store name…" maxlength="30"
+        autocomplete="off" autocorrect="off" autocapitalize="words" spellcheck="false">
+      <div class="store-add-type-row">${typeBtns}</div>
+      <button class="store-add-confirm" data-settings-form-confirm aria-label="Add">✓</button>
+      <button class="store-add-cancel" data-settings-form-cancel aria-label="Cancel">✕</button>
+    </div>`;
+  const input = slot.querySelector('.store-add-name');
+  if (input) input.focus();
+}
+
+function hideSettingsAddStoreForm() {
+  const slot = document.getElementById('addStoreSlot');
+  if (!slot) return;
+  slot.innerHTML = `<button class="settings-btn" id="addStoreBtn">+ Add store</button>`;
+}
+
+function confirmSettingsAddStoreForm() {
+  const slot = document.getElementById('addStoreSlot');
+  if (!slot) return;
+  const input = slot.querySelector('.store-add-name');
+  if (!input) return;
+  const name = input.value.trim();
+  if (!name) { input.focus(); return; }
+  addStore(name, addingStoreType);
+  hideSettingsAddStoreForm();
+}
+
+// Generic confirmation dialog backed by #confirmOverlay. Returns Promise<boolean>.
+function showConfirmDialog({ title, message, confirmLabel = 'CONFIRM', cancelLabel = 'Cancel', danger = false }) {
+  return new Promise(resolve => {
+    const overlay    = document.getElementById('confirmOverlay');
+    const titleEl    = document.getElementById('confirmDialogTitle');
+    const messageEl  = document.getElementById('confirmDialogMessage');
+    const confirmBtn = document.getElementById('confirmDialogConfirm');
+    const cancelBtn  = document.getElementById('confirmDialogCancel');
+
+    titleEl.textContent   = title;
+    messageEl.innerHTML   = message;
+    confirmBtn.textContent = confirmLabel;
+    cancelBtn.textContent  = cancelLabel;
+    confirmBtn.classList.toggle('btn-danger', !!danger);
+
+    const close = (val) => {
+      overlay.classList.remove('open');
+      confirmBtn.removeEventListener('click', onYes);
+      cancelBtn.removeEventListener('click', onNo);
+      overlay.removeEventListener('click', onBackdrop);
+      document.removeEventListener('keydown', onKey);
+      resolve(val);
+    };
+    const onYes      = () => close(true);
+    const onNo       = () => close(false);
+    const onBackdrop = (e) => { if (e.target === overlay) close(false); };
+    const onKey      = (e) => {
+      if (e.key === 'Escape') { e.preventDefault(); close(false); }
+      else if (e.key === 'Enter') { e.preventDefault(); close(true); }
+    };
+
+    confirmBtn.addEventListener('click', onYes);
+    cancelBtn.addEventListener('click', onNo);
+    overlay.addEventListener('click', onBackdrop);
+    document.addEventListener('keydown', onKey);
+
+    overlay.classList.add('open');
+  });
 }
 
 function openSettings() {
@@ -1891,6 +1978,7 @@ function openSettings() {
   document.getElementById('storageStatusLabel').textContent =
     idbAvailable ? 'localStorage + IDB' : 'localStorage only';
   renderStoreListSettings();
+  hideSettingsAddStoreForm();
   document.getElementById('settingsOverlay').classList.add('open');
 }
 function closeSettings() {
@@ -1918,9 +2006,23 @@ document.getElementById('resetAllBtn').addEventListener('click', () => {
   resetAll();
 });
 
-document.getElementById('addStoreBtn').addEventListener('click', () => {
-  const name = prompt('New store name:');
-  if (name && name.trim()) addStore(name);
+document.getElementById('addStoreSlot').addEventListener('click', e => {
+  if (e.target.closest('#addStoreBtn')) { showSettingsAddStoreForm(); return; }
+  if (e.target.closest('[data-settings-form-confirm]')) { confirmSettingsAddStoreForm(); return; }
+  if (e.target.closest('[data-settings-form-cancel]'))  { hideSettingsAddStoreForm(); return; }
+  const typeBtn = e.target.closest('[data-settings-form-type]');
+  if (typeBtn) {
+    addingStoreType = typeBtn.dataset.settingsFormType;
+    document.querySelectorAll('#addStoreSlot .store-add-type-opt').forEach(b => {
+      b.classList.toggle('active', b.dataset.settingsFormType === addingStoreType);
+    });
+  }
+});
+
+document.getElementById('addStoreSlot').addEventListener('keydown', e => {
+  if (!e.target.closest('.store-add-name')) return;
+  if (e.key === 'Enter')       { e.preventDefault(); confirmSettingsAddStoreForm(); }
+  else if (e.key === 'Escape') { e.preventDefault(); hideSettingsAddStoreForm(); }
 });
 
 document.getElementById('storeListSettings').addEventListener('blur', e => {

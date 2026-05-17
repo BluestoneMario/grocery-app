@@ -134,7 +134,9 @@
     <div class="settings-section">
       <div class="settings-section-title">Stores</div>
       <div id="storeListSettings"></div>
-      <button class="settings-btn" id="addStoreBtn">+ Add store</button>
+      <div id="addStoreSlot">
+        <button class="settings-btn" id="addStoreBtn">+ Add store</button>
+      </div>
     </div>
 
     <div class="settings-section">
@@ -151,6 +153,17 @@
     </div>
 
     <button class="settings-close" id="settingsCloseBtn">Close</button>
+  </div>
+</div>
+
+<div class="overlay overlay-confirm" id="confirmOverlay">
+  <div class="dialog">
+    <div class="dialog-title" id="confirmDialogTitle">Confirm</div>
+    <div class="dialog-sub" id="confirmDialogMessage"></div>
+    <div class="dialog-actions">
+      <button class="btn-cancel" id="confirmDialogCancel">Cancel</button>
+      <button class="btn-confirm" id="confirmDialogConfirm">CONFIRM</button>
+    </div>
   </div>
 </div>
 
