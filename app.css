@@ -858,22 +858,23 @@ footer {
 }
 
 .new-recipe-btn {
-  background: var(--accent-dim);
-  border: 1px solid var(--accent-border);
-  border-radius: 12px;
-  color: var(--accent);
+  background: var(--accent);
+  border: none;
+  border-radius: var(--radius);
+  color: #000;
   font-family: 'Oswald', Impact, 'Helvetica Neue Condensed', 'Arial Narrow', sans-serif;
-  font-size: 12px;
+  font-size: 15px;
   font-weight: 700;
-  letter-spacing: 0.07em;
-  padding: 5px 13px;
+  letter-spacing: 0.06em;
+  padding: 10px 15px;
   cursor: pointer;
-  transition: background 0.15s;
+  transition: opacity 0.15s;
   user-select: none;
   white-space: nowrap;
+  margin-left: auto;
 }
 
-.new-recipe-btn:active { background: rgba(232,160,32,0.25); }
+.new-recipe-btn:active { opacity: 0.8; }
 
 .recipe {
   border-bottom: 1px solid var(--border-light);
