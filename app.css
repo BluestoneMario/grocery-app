@@ -1464,6 +1464,97 @@ footer {
 
 .store-pill:active { opacity: 0.8; }
 
+.store-add-pill {
+  background: transparent;
+  border: 1px dashed var(--border);
+  border-radius: 12px;
+  color: var(--text-muted);
+  font-family: 'Space Mono', ui-monospace, 'SF Mono', Menlo, Monaco, Consolas, monospace;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 4px 11px;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+  user-select: none;
+  white-space: nowrap;
+}
+.store-add-pill:active { color: var(--text); border-color: var(--text-muted); }
+
+/* Inline add-store form — replaces pills row in place */
+.store-add-form {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: nowrap;
+  width: 100%;
+  min-width: 0;
+}
+
+.store-add-name {
+  flex: 1 1 70px;
+  min-width: 0;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  color: var(--text);
+  font-family: 'Space Mono', ui-monospace, 'SF Mono', Menlo, Monaco, Consolas, monospace;
+  font-size: 12px;
+  padding: 5px 10px;
+  outline: none;
+  transition: border-color 0.2s;
+}
+.store-add-name:focus { border-color: var(--accent-border); }
+.store-add-name::placeholder { color: var(--text-dim); }
+
+.store-add-type-row {
+  display: flex;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.store-add-type-opt {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  font-family: 'Oswald', Impact, 'Helvetica Neue Condensed', 'Arial Narrow', sans-serif;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  padding: 4px 5px;
+  cursor: pointer;
+  user-select: none;
+  border-radius: 8px;
+  transition: color 0.15s, background 0.15s, border-color 0.15s;
+}
+.store-add-type-opt.active {
+  background: var(--accent-dim);
+  border-color: var(--accent-border);
+  color: var(--accent);
+}
+.store-add-type-opt:active { opacity: 0.75; }
+
+.store-add-confirm,
+.store-add-cancel {
+  flex-shrink: 0;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  font-size: 13px;
+  font-family: 'Space Mono', ui-monospace, 'SF Mono', Menlo, Monaco, Consolas, monospace;
+  padding: 3px 9px;
+  cursor: pointer;
+  user-select: none;
+  line-height: 1;
+  transition: color 0.15s, background 0.15s, border-color 0.15s;
+}
+.store-add-confirm {
+  color: var(--green);
+  border-color: rgba(93,215,128,0.3);
+}
+.store-add-confirm:active { background: var(--green-dim); }
+.store-add-cancel { color: var(--text-muted); }
+.store-add-cancel:active { color: var(--red); }
+
 /* ── NOTE PANEL: expand height for availability button ── */
 .item-note-panel.open {
   max-height: 200px;

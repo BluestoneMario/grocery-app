@@ -604,9 +604,63 @@ function renderStoreSwitcher() {
     return;
   }
   el.classList.remove('store-switcher--recipes');
-  el.innerHTML = storeRegistry.map(s =>
+  const pills = storeRegistry.map(s =>
     `<button class="store-pill${s.id === state.currentStoreId ? ' active' : ''}" data-switch-store="${esc(s.id)}">${esc(s.name)}</button>`
   ).join('');
+  el.innerHTML = pills +
+    `<button class="store-add-pill" data-add-store aria-label="Add store">+</button>`;
+}
+
+// Transient state while the inline add-store form is open.
+let addingStoreType = 'supermarket';
+
+const STORE_TYPE_SHORT = {
+  supermarket: 'SUPER',
+  drugstore:   'DRUG',
+  pharmacy:    'PHARM',
+  other:       'OTHER',
+};
+
+function showAddStoreForm() {
+  const el = document.getElementById('storeSwitcher');
+  if (!el) return;
+  addingStoreType = 'supermarket';
+  const typeBtns = STORE_TYPES.map(t =>
+    `<button class="store-add-type-opt${t.value === addingStoreType ? ' active' : ''}" data-store-form-type="${t.value}">${STORE_TYPE_SHORT[t.value]}</button>`
+  ).join('');
+  el.innerHTML = `
+    <div class="store-add-form">
+      <input class="store-add-name" type="text" placeholder="Store name…" maxlength="30"
+        autocomplete="off" autocorrect="off" autocapitalize="words" spellcheck="false">
+      <div class="store-add-type-row">${typeBtns}</div>
+      <button class="store-add-confirm" data-store-form-confirm aria-label="Add">✓</button>
+      <button class="store-add-cancel" data-store-form-cancel aria-label="Cancel">✕</button>
+    </div>`;
+  const input = el.querySelector('.store-add-name');
+  if (input) input.focus();
+}
+
+function confirmAddStoreFromForm() {
+  const el = document.getElementById('storeSwitcher');
+  if (!el) return;
+  const input = el.querySelector('.store-add-name');
+  if (!input) return;
+  const name = input.value.trim();
+  if (!name) { input.focus(); return; }
+  const newStore = { id: 'store_' + uid(), name, type: addingStoreType };
+  storeRegistry.push(newStore);
+  saveStores();
+  state.currentStoreId = newStore.id;
+  state.items = sorted(state.items, newStore.id);
+  unknownSectionOpen = false;
+  saveState();
+  renderStoreSwitcher();
+  render();
+  showToast('Store added');
+}
+
+function cancelAddStoreForm() {
+  renderStoreSwitcher();
 }
 
 function switchStore(id) {
@@ -1431,8 +1485,25 @@ document.addEventListener('pointerdown', e => {
 
 document.getElementById('storeSwitcher').addEventListener('click', e => {
   if (e.target.closest('[data-new-recipe]')) { createRecipe(); return; }
+  if (e.target.closest('[data-add-store]')) { showAddStoreForm(); return; }
+  if (e.target.closest('[data-store-form-confirm]')) { confirmAddStoreFromForm(); return; }
+  if (e.target.closest('[data-store-form-cancel]')) { cancelAddStoreForm(); return; }
+  const typeBtn = e.target.closest('[data-store-form-type]');
+  if (typeBtn) {
+    addingStoreType = typeBtn.dataset.storeFormType;
+    document.querySelectorAll('.store-add-type-opt').forEach(b => {
+      b.classList.toggle('active', b.dataset.storeFormType === addingStoreType);
+    });
+    return;
+  }
   const pill = e.target.closest('[data-switch-store]');
   if (pill) switchStore(pill.dataset.switchStore);
+});
+
+document.getElementById('storeSwitcher').addEventListener('keydown', e => {
+  if (!e.target.closest('.store-add-name')) return;
+  if (e.key === 'Enter')      { e.preventDefault(); confirmAddStoreFromForm(); }
+  else if (e.key === 'Escape') { e.preventDefault(); cancelAddStoreForm(); }
 });
 
 // ════════════════════════════════════════════
