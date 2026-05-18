@@ -180,6 +180,31 @@ function saveRecipes() {
   localStorage.setItem(RECIPES_KEY, JSON.stringify(recipes));
 }
 
+// setState() is the single dispatch path for persisting and re-rendering after
+// any change to state.items / history / recipes / storeRegistry. Callers mutate
+// the relevant in-memory structure (directly or via `updates`), then call this
+// to merge, persist, and render in one step.
+//
+// updates: partial of { items, currentStoreId, session, ordered }
+// options:
+//   historyChanged — also save history
+//   recipesChanged — also save recipes
+//   storesChanged  — also save storeRegistry
+//   skipRender     — caller will handle rendering itself (e.g. multi-step ops
+//                    that need to call renderStoreSwitcher / renderView / a
+//                    targeted partial render before or instead of render())
+function setState(updates, options = {}) {
+  if (updates) Object.assign(state, updates);
+  saveState();
+  if (options.historyChanged) saveHistory();
+  if (options.recipesChanged) saveRecipes();
+  if (options.storesChanged)  saveStores();
+  if (!options.skipRender) {
+    if (currentView === 'recipes') renderRecipes();
+    else                           render();
+  }
+}
+
 // ════════════════════════════════════════════
 // SCORING
 // ════════════════════════════════════════════
@@ -383,8 +408,6 @@ function addItem(name, zone) {
     }
   }
 
-  if (histChanged) saveHistory();
-
   const existing = state.items.find(i => nameKey(i.name) === key);
   if (existing) {
     showToast(`${existing.name} is already on the list`);
@@ -393,9 +416,8 @@ function addItem(name, zone) {
     insertItem(newItem);
     lastAddedId = newItem.id;
   }
-  if (!state.ordered) state.ordered = true;
-  saveState();
-  render();
+  const updates = state.ordered ? {} : { ordered: true };
+  setState(updates, { historyChanged: histChanged });
   return true;
 }
 
@@ -410,16 +432,14 @@ function toggleItem(id) {
     const el = document.querySelector(`.item[data-id="${id}"]`);
     if (el) {
       el.classList.add('checking');
-      setTimeout(() => { saveState(); render(); }, 200);
+      setTimeout(() => setState({}), 200);
     } else {
-      saveState();
-      render();
+      setState({});
     }
   } else {
     item.checked = false;
     state.session.order = state.session.order.filter(x => x !== id);
-    saveState();
-    render();
+    setState({});
   }
 }
 
@@ -478,9 +498,7 @@ function commitRenameItem() {
     delete history[oldKey];
   }
   item.name = newName;
-  saveState();
-  saveHistory();
-  render();
+  setState({}, { historyChanged: true });
 }
 
 function cancelRenameItem() {
@@ -513,8 +531,7 @@ function removeItem(id) {
       pendingDeleteIds.delete(id);
       state.items = state.items.filter(i => i.id !== id);
       state.session.order = state.session.order.filter(x => x !== id);
-      saveState();
-      render();
+      setState({});
     },
   });
 }
@@ -569,12 +586,9 @@ function recordTrip() {
     }
   });
 
-  if (histChanged) saveHistory();
-
   state.items = state.items.filter(i => !i.checked);
   state.session = { id: uid(), storeId: state.currentStoreId, order: [] };
-  saveState();
-  render();
+  setState({}, { historyChanged: histChanged });
   showToast(n > 0 ? `Trip recorded — ${n} item${n !== 1 ? 's' : ''} learned` : 'List reset');
 }
 
@@ -585,8 +599,7 @@ function recordTrip() {
 function createRecipe() {
   const r = { id: uid(), name: 'New Recipe', items: [], type: 'main' };
   recipes.unshift(r);
-  saveRecipes();
-  renderRecipes();
+  setState({}, { recipesChanged: true });
   setTimeout(() => {
     openRecipePanel(r.id);
     setRecipeEditing(r.id, true);
@@ -597,8 +610,7 @@ function createRecipe() {
 
 function deleteRecipe(id) {
   recipes = recipes.filter(r => r.id !== id);
-  saveRecipes();
-  renderRecipes();
+  setState({}, { recipesChanged: true });
 }
 
 function renameRecipe(id, newName) {
@@ -606,7 +618,7 @@ function renameRecipe(id, newName) {
   if (!r) return;
   const trimmed = newName.trim();
   if (trimmed) r.name = trimmed;
-  saveRecipes();
+  setState({}, { recipesChanged: true, skipRender: true });
   const nameEl = document.querySelector(`.recipe[data-recipe-id="${id}"] .recipe-name-text`);
   if (nameEl) nameEl.textContent = r.name;
   const countEl = document.querySelector(`.recipe[data-recipe-id="${id}"] .recipe-item-count`);
@@ -619,7 +631,7 @@ function addRecipeItem(recipeId, name, amount) {
   const r = recipes.find(r => r.id === recipeId);
   if (!r) return false;
   r.items.push({ id: uid(), name, amount: amount.trim() });
-  saveRecipes();
+  setState({}, { recipesChanged: true, skipRender: true });
   refreshRecipeItemsDOM(recipeId);
   return true;
 }
@@ -628,7 +640,7 @@ function removeRecipeItem(recipeId, itemId) {
   const r = recipes.find(r => r.id === recipeId);
   if (!r) return;
   r.items = r.items.filter(i => i.id !== itemId);
-  saveRecipes();
+  setState({}, { recipesChanged: true, skipRender: true });
   refreshRecipeItemsDOM(recipeId);
 }
 
@@ -663,8 +675,8 @@ function addRecipeToList(recipeId) {
     }
   });
 
-  saveState();
   currentView = 'list';
+  setState({}, { skipRender: true });
   renderView();
   const n = itemsToAdd.length;
   const msg = n === r.items.length
@@ -731,13 +743,11 @@ function confirmAddStoreFromForm() {
   if (!name) { input.focus(); return; }
   const newStore = { id: 'store_' + uid(), name, type: addingStoreType };
   storeRegistry.push(newStore);
-  saveStores();
   state.currentStoreId = newStore.id;
   state.items = sorted(state.items, newStore.id);
   unknownSectionOpen = false;
-  saveState();
   renderStoreSwitcher();
-  render();
+  setState({}, { storesChanged: true });
   showToast('Store added');
 }
 
@@ -750,9 +760,8 @@ function switchStore(id) {
   state.currentStoreId = id;
   state.items = sorted(state.items, id);
   unknownSectionOpen = false;
-  saveState();
   renderStoreSwitcher();
-  render();
+  setState({});
 }
 
 function toggleAvailability(itemId, storeId) {
@@ -769,8 +778,7 @@ function toggleAvailability(itemId, storeId) {
   } else {
     history[key].notAt.push(storeId);
   }
-  saveHistory();
-  render();
+  setState({}, { historyChanged: true });
 }
 
 function esc(s) {
@@ -1323,8 +1331,7 @@ function onDragEnd() {
   dragEl.classList.remove('drag-ghost');
   dragClone = dragEl = null;
 
-  saveState();
-  render();
+  setState({});
 }
 
 // ════════════════════════════════════════════
@@ -1346,7 +1353,7 @@ document.getElementById('listRoot').addEventListener('click', e => {
     if (input) {
       input.value = val;
       const item = state.items.find(i => i.id === id);
-      if (item) { item.comment = val; saveState(); }
+      if (item) { item.comment = val; setState({}, { skipRender: true }); }
       const commentEl = input.closest('.item').querySelector('.item-comment');
       if (commentEl) commentEl.textContent = val;
       else {
@@ -1398,7 +1405,7 @@ document.getElementById('listRoot').addEventListener('input', e => {
   const item = state.items.find(i => i.id === id);
   if (!item) return;
   item.comment = noteInput.value;
-  saveState();
+  setState({}, { skipRender: true });
   const itemEl = noteInput.closest('.item');
   let commentEl = itemEl.querySelector('.item-comment');
   if (noteInput.value) {
@@ -1483,7 +1490,7 @@ document.getElementById('recipesRoot').addEventListener('click', e => {
     const r = recipes.find(r => r.id === id);
     if (r && (r.type || 'main') !== newType) {
       r.type = newType;
-      saveRecipes();
+      setState({}, { recipesChanged: true, skipRender: true });
       const toggle = setType.closest('.recipe-type-toggle');
       toggle.querySelectorAll('[data-recipe-set-type]').forEach(btn => {
         btn.classList.toggle('active', btn.dataset.recipeSetType === newType);
@@ -1970,7 +1977,7 @@ async function resetAll() {
   storeRegistry = DEFAULT_STORES.map(s => ({ ...s }));
   state = { items: [], currentStoreId: 'grocery_main', session: { id: uid(), storeId: 'grocery_main', order: [] }, ordered: false };
   for (const key of TRACKED_KEYS) localStorage.removeItem(key);
-  saveState(); saveHistory(); saveRecipes(); saveStores();
+  setState({}, { historyChanged: true, recipesChanged: true, storesChanged: true, skipRender: true });
   renderView();
   showToast('All data reset');
 }
@@ -1999,8 +2006,7 @@ function setStoreType(id, newType) {
   if (!STORE_TYPES.some(t => t.value === newType)) return;
   if (s.type === newType) return;
   s.type = newType;
-  saveStores();
-  render();
+  setState({}, { storesChanged: true });
 }
 
 function renameStore(id, name) {
@@ -2009,7 +2015,7 @@ function renameStore(id, name) {
   const s = storeRegistry.find(s => s.id === id);
   if (!s || s.name === name) return;
   s.name = name;
-  saveStores();
+  setState({}, { storesChanged: true, skipRender: true });
   renderStoreSwitcher();
 }
 
@@ -2019,7 +2025,7 @@ function addStore(name, type = 'supermarket') {
   if (!STORE_TYPES.some(t => t.value === type)) type = 'supermarket';
   const id = 'store_' + uid();
   storeRegistry.push({ id, name, type });
-  saveStores();
+  setState({}, { storesChanged: true, skipRender: true });
   renderStoreListSettings();
   renderStoreSwitcher();
 }
