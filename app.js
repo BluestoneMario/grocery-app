@@ -908,6 +908,14 @@ function render() {
 
   const root = document.getElementById('listRoot');
 
+  // Snapshot any open note panel before innerHTML wipes it. render() runs on
+  // every state change (e.g. checking off a different item) and would
+  // otherwise close the panel and steal focus from the user mid-typing. The
+  // input value is captured separately because the user may have typed ahead
+  // of the most recent setState({skipRender:true}) save.
+  const openNoteId = document.querySelector('.item-note-panel.open')?.closest('.item')?.dataset.id ?? null;
+  const openNoteValue = openNoteId ? document.getElementById(`note-input-${openNoteId}`)?.value : null;
+
   if (total === 0) {
     root.innerHTML = `
       <div class="empty">
@@ -962,6 +970,14 @@ function render() {
 
   root.innerHTML = html;
   lastAddedId = null;
+
+  // Restore the open note panel snapshotted above.
+  if (openNoteId) {
+    document.getElementById(`note-panel-${openNoteId}`)?.classList.add('open');
+    const input = document.getElementById(`note-input-${openNoteId}`);
+    if (input && openNoteValue !== null) input.value = openNoteValue;
+    input?.focus();
+  }
 
   // Reapply soft-delete visual state to any row still in the undo window.
   pendingDeleteIds.forEach(id => {
@@ -1042,6 +1058,21 @@ function recipeHtml(r) {
 function renderRecipes() {
   const root = document.getElementById('recipesRoot');
 
+  // Snapshot any open recipe panel, its editing flag, and the currently-focused
+  // input within it before innerHTML wipes the DOM. Same rationale as render():
+  // renderRecipes() can fire from setState() while the user is editing (e.g.
+  // creating a new recipe while another panel is open) and would otherwise
+  // close the panel and steal focus mid-typing.
+  const openRecipeId = document.querySelector('.recipe-panel.open')
+    ?.id?.replace('recipe-panel-', '') ?? null;
+  const editingRecipeId = document.querySelector('.recipe.recipe--editing')
+    ?.dataset.recipeId ?? null;
+  const focusedEl = document.activeElement;
+  const focusedClass = ['recipe-name-input', 'recipe-ingredient-input', 'recipe-amount-input']
+    .find(c => focusedEl?.classList.contains(c)) ?? null;
+  const focusedRecipeId = focusedClass ? focusedEl.dataset.recipeId : null;
+  const focusedValue    = focusedClass ? focusedEl.value : null;
+
   if (recipes.length === 0) {
     root.innerHTML = `
       <div class="recipes-empty">
@@ -1070,6 +1101,20 @@ function renderRecipes() {
       body += desserts.map(recipeHtml).join('');
     }
     root.innerHTML = body;
+  }
+
+  // Restore the open recipe panel + editing state + focused input snapshotted above.
+  if (openRecipeId) {
+    document.getElementById(`recipe-panel-${openRecipeId}`)?.classList.add('open');
+  }
+  if (editingRecipeId) {
+    document.querySelector(`.recipe[data-recipe-id="${editingRecipeId}"]`)
+      ?.classList.add('recipe--editing');
+  }
+  if (focusedClass && focusedRecipeId) {
+    const input = document.querySelector(`.${focusedClass}[data-recipe-id="${focusedRecipeId}"]`);
+    if (input && focusedValue !== null) input.value = focusedValue;
+    input?.focus();
   }
 }
 
