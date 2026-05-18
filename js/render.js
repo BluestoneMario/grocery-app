@@ -118,7 +118,11 @@ export function itemHtml(item, draggable = true) {
 
 export function render() {
   const storeId = state.currentStoreId;
-  const all     = state.items;
+  // Filter out items in the undo window so render() never re-introduces a
+  // soft-deleted row. The row's DOM element is owned by removeItem() during
+  // its itemOut animation; render() will only see the item again if undo
+  // pulls it back out of pendingDeleteIds.
+  const all     = state.items.filter(i => !pendingDeleteIds.has(i.id));
   const checked = all.filter(i => i.checked);
 
   const unchecked    = all.filter(i => !i.checked);
@@ -182,12 +186,6 @@ export function render() {
   syncInCartSection(root, checked);
 
   ui.lastAddedId = null;
-
-  // Reapply soft-delete visual state to any row still in the undo window.
-  pendingDeleteIds.forEach(id => {
-    const pEl = root.querySelector(`.item[data-id="${id}"]`);
-    if (pEl) pEl.classList.add('item--pending-delete');
-  });
 }
 
 // ─── Surgical render helpers ─────────────────────────────────────────────────

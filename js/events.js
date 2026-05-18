@@ -164,28 +164,44 @@ function removeItem(id) {
   if (!item) return;
   if (pendingDeleteIds.has(id)) return;
 
-  // Commit any prior pending delete first so its render() doesn't clobber the
-  // .item--pending-delete class we're about to set on this row.
+  // Commit any prior in-flight undo before starting a new one — the user has
+  // moved on, so the previous toast's timeout effectively expires now.
   flushPendingToastAction();
 
   pendingDeleteIds.add(id);
-  const el = document.querySelector(`.item[data-id="${id}"]`);
-  if (el) el.classList.add('item--pending-delete');
 
-  showToast(`Removed ${item.name}`, {
-    label: 'UNDO',
-    onClick: () => {
-      pendingDeleteIds.delete(id);
-      const liveEl = document.querySelector(`.item[data-id="${id}"]`);
-      if (liveEl) liveEl.classList.remove('item--pending-delete');
-    },
-    onTimeout: () => {
-      pendingDeleteIds.delete(id);
-      state.items = state.items.filter(i => i.id !== id);
-      state.session.order = state.session.order.filter(x => x !== id);
-      setState({});
-    },
-  });
+  const showUndoToast = () => {
+    showToast(`Removed ${item.name}`, {
+      label: 'UNDO',
+      onClick: () => {
+        // Pull the item back into the rendered list. It is still in state.items;
+        // render() will recreate the row with a fresh itemIn animation, landing
+        // it in the position dictated by its score.
+        pendingDeleteIds.delete(id);
+        render();
+      },
+      onTimeout: () => {
+        pendingDeleteIds.delete(id);
+        state.items = state.items.filter(i => i.id !== id);
+        state.session.order = state.session.order.filter(x => x !== id);
+        setState({});
+      },
+    });
+  };
+
+  const el = document.querySelector(`.item[data-id="${id}"]`);
+  if (el) {
+    // Play itemOut, then drop the element from the DOM and surface the toast.
+    // Using a setTimeout rather than animationend so the reduced-motion path
+    // (no keyframes defined for itemOut) still resolves on time.
+    el.classList.add('removing');
+    setTimeout(() => {
+      el.remove();
+      showUndoToast();
+    }, 200);
+  } else {
+    showUndoToast();
+  }
 }
 
 // recordTrip() saves each checked item's position in the trip to its per-store
@@ -502,6 +518,123 @@ function onDragEnd() {
 
   setState({});
 }
+
+// ─── Swipe-to-delete ─────────────────────────────────────────────────────────
+// Left-swipe past SWIPE_THRESHOLD on a list item triggers the same undo-able
+// delete flow as the × button. Disabled in reorder mode so it never fights
+// the drag-to-reorder handler (which only fires from .drag-handle).
+
+const SWIPE_THRESHOLD = 60;
+
+let swipeState     = null;
+let snapBackTimer  = null;
+
+document.getElementById('listRoot').addEventListener('pointerdown', e => {
+  if (ui.reorderMode) return;
+  if (e.pointerType === 'mouse' && e.button !== 0) return;
+  // Don't start swiping when the user is interacting with text inputs or the
+  // reorder drag handle — those have their own gestures.
+  if (e.target.closest('input, .item-rename-input, .drag-handle')) return;
+
+  const itemEl = e.target.closest('.item');
+  if (!itemEl) return;
+  if (itemEl.classList.contains('removing')) return;
+  if (pendingDeleteIds.has(itemEl.dataset.id)) return;
+
+  const main = itemEl.querySelector('.item-main');
+  if (!main) return;
+
+  // If a snap-back from a prior swipe is still in flight, cancel it so it
+  // doesn't wipe the inline transform mid-gesture.
+  if (snapBackTimer) { clearTimeout(snapBackTimer); snapBackTimer = null; }
+
+  swipeState = {
+    el: itemEl,
+    main,
+    id: itemEl.dataset.id,
+    startX: e.clientX,
+    startY: e.clientY,
+    pointerId: e.pointerId,
+    committed: false,
+    armed: false,
+    dx: 0,
+  };
+});
+
+window.addEventListener('pointermove', e => {
+  if (!swipeState) return;
+  if (e.pointerId !== swipeState.pointerId) return;
+
+  const dx = e.clientX - swipeState.startX;
+  const dy = e.clientY - swipeState.startY;
+  const absDx = Math.abs(dx);
+  const absDy = Math.abs(dy);
+
+  if (!swipeState.committed) {
+    // Wait for enough movement to classify the gesture.
+    if (absDx < 8 && absDy < 8) return;
+    // Require a clearly horizontal, leftward gesture; otherwise let the touch
+    // fall through to vertical scroll (touch-action: pan-y on .item).
+    if (dx >= 0 || absDx < absDy * 2) {
+      swipeState = null;
+      return;
+    }
+    swipeState.committed = true;
+    swipeState.el.classList.add('swipe-active');
+    swipeState.main.style.transition = 'none';
+    try { swipeState.el.setPointerCapture(e.pointerId); } catch (_) {}
+    // Swallow the click that would otherwise fire on pointerup so a committed
+    // swipe doesn't also toggle the checkbox or open the note panel.
+    const suppress = ev => { ev.stopPropagation(); ev.preventDefault(); };
+    document.addEventListener('click', suppress, { capture: true, once: true });
+    setTimeout(() => document.removeEventListener('click', suppress, true), 600);
+  }
+
+  e.preventDefault();
+
+  const tx = Math.min(0, dx);
+  swipeState.dx = tx;
+  swipeState.main.style.transform = `translateX(${tx}px)`;
+
+  const armed = -tx >= SWIPE_THRESHOLD;
+  if (armed !== swipeState.armed) {
+    swipeState.armed = armed;
+    swipeState.el.classList.toggle('swipe-armed', armed);
+  }
+}, { passive: false });
+
+function onSwipeEnd(e) {
+  if (!swipeState) return;
+  if (e.pointerId !== swipeState.pointerId) return;
+
+  if (!swipeState.committed) { swipeState = null; return; }
+
+  const s = swipeState;
+  swipeState = null;
+
+  s.el.classList.remove('swipe-armed');
+
+  if (-s.dx >= SWIPE_THRESHOLD) {
+    // Past threshold — feed into the same undo-able delete flow as the × button.
+    // The .item-main transform stays where it is; the .item.removing animation
+    // collapses the whole row, so the leftover translate is immaterial.
+    removeItem(s.id);
+  } else {
+    // Snap back.
+    s.main.style.transition = 'transform 0.2s ease';
+    s.main.style.transform = 'translateX(0)';
+    if (snapBackTimer) clearTimeout(snapBackTimer);
+    snapBackTimer = setTimeout(() => {
+      snapBackTimer = null;
+      s.el.classList.remove('swipe-active');
+      s.main.style.transition = '';
+      s.main.style.transform = '';
+    }, 220);
+  }
+}
+
+window.addEventListener('pointerup', onSwipeEnd);
+window.addEventListener('pointercancel', onSwipeEnd);
 
 // ─── Events — list (delegated) ───────────────────────────────────────────────
 

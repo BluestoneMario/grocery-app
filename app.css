@@ -283,6 +283,41 @@ main {
   border-bottom: 1px solid var(--border-light);
   animation: itemIn 0.18s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
   position: relative;
+  /* Vertical scroll stays native; horizontal swipe is delivered to the JS
+     swipe-to-delete handler. */
+  touch-action: pan-y;
+}
+
+/* Red delete zone revealed when the user is swiping the row left. */
+.item::before {
+  content: 'DELETE';
+  position: absolute;
+  inset: 0;
+  background: var(--red);
+  color: #fff;
+  font-family: 'Oswald', Impact, 'Helvetica Neue Condensed', 'Arial Narrow', sans-serif;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.15em;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding-right: 22px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.12s;
+  z-index: 0;
+}
+
+.item.swipe-active::before { opacity: 1; }
+.item.swipe-armed::before  { background: #f06464; }
+
+/* During a swipe the row content sits above ::before with its own opaque
+   background, so the red zone only appears in the gap left by translateX. */
+.item.swipe-active .item-main {
+  position: relative;
+  z-index: 1;
+  background: var(--bg);
 }
 
 /* Reduced-motion fallback: plain opacity. The fancy vertical drop is
@@ -822,12 +857,6 @@ footer {
   vertical-align: middle;
 }
 .toast-action:active { opacity: 0.7; }
-
-.item--pending-delete {
-  opacity: 0.35;
-  pointer-events: none;
-  transition: opacity 0.2s;
-}
 
 /* ── STORAGE WARNING BANNER ── */
 .storage-warning-banner {
