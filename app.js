@@ -832,6 +832,7 @@ function itemHtml(item, draggable = true) {
           ${commentText}
         </div>
         ${showSortBadges ? `<span class="sort-badge ${ind.cls}" title="${ind.tip}">${ind.label}</span>` : ''}
+        ${isUnavail ? `<button class="unavail-badge" data-avail-toggle="${item.id}" aria-label="Mark ${esc(item.name)} as available at ${esc(storeName)}" title="Not sold at ${esc(storeName)} — tap to restore">✕ ${esc(storeName)}</button>` : ''}
         <button class="${noteBtnCls}" data-note="${item.id}" aria-label="Add note to ${esc(item.name)}">
           <svg width="11" height="11" viewBox="0 0 11 11" fill="none">
             <path d="M7.5 1.5L9.5 3.5M1.5 9.5L2.5 6.5L7.5 1.5L9.5 3.5L4.5 8.5L1.5 9.5Z" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>
