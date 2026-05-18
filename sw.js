@@ -9,7 +9,7 @@
  * and clients pick up new assets on next activate.
  */
 
-const APP_VERSION = '1.12.4';
+const APP_VERSION = '1.13.0';
 const STATIC_CACHE = `marketlist-static-${APP_VERSION}`;
 const FONTS_CACHE  = `marketlist-fonts-${APP_VERSION}`;
 
@@ -18,6 +18,12 @@ const SHELL_URLS = [
   './index.html',
   './app.css',
   './app.js',
+  './js/uid.js',
+  './js/state.js',
+  './js/scoring.js',
+  './js/render.js',
+  './js/events.js',
+  './js/settings.js',
   './manifest.webmanifest',
   './icons/apple-touch-icon.png',
   './icons/icon-192.png',
