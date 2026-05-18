@@ -844,6 +844,35 @@ document.getElementById('recipesRoot').addEventListener('blur', e => {
   if (nameInput) renameRecipe(nameInput.dataset.recipeId, nameInput.value);
 }, true);
 
+// Bulk paste — multi-line clipboard contents become one ingredient per line.
+// A trailing parenthesised value on a line is treated as the amount, e.g.
+// "Oat milk (500ml)" → name "Oat milk", amount "500ml".
+document.getElementById('recipesRoot').addEventListener('paste', e => {
+  const ingInput = e.target.closest('.recipe-ingredient-input');
+  if (!ingInput) return;
+  const text = (e.clipboardData || window.clipboardData)?.getData('text') || '';
+  if (!text.includes('\n')) return; // single-line paste falls through to default
+
+  e.preventDefault();
+  const recipeId = ingInput.dataset.recipeId;
+  const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+
+  let added = 0;
+  for (const line of lines) {
+    // Trailing "(amount)" — non-greedy on the name, no nested parens.
+    const m = line.match(/^(.*?)\s*\(([^()]+)\)\s*$/);
+    const name   = m ? m[1].trim() : line;
+    const amount = m ? m[2].trim() : '';
+    if (!name) continue;
+    if (addRecipeItem(recipeId, name, amount)) added++;
+  }
+
+  ingInput.value = '';
+  closeRecipeAc(recipeId);
+  ingInput.focus();
+  showToast(`${added} ingredient${added !== 1 ? 's' : ''} added`);
+});
+
 function doAddRecipeItem(recipeId) {
   const ingInput = document.querySelector(`.recipe-ingredient-input[data-recipe-id="${recipeId}"]`);
   const amtInput = document.querySelector(`.recipe-amount-input[data-recipe-id="${recipeId}"]`);
