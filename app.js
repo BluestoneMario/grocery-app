@@ -1723,26 +1723,11 @@ document.querySelectorAll('.toggle-btn').forEach(btn => {
 // ════════════════════════════════════════════
 
 document.getElementById('doneBtn').addEventListener('click', () => {
-  const checkedItems = state.items
-    .filter(i => i.checked)
-    .sort((a, b) => {
-      const ai = state.session.order.indexOf(a.id);
-      const bi = state.session.order.indexOf(b.id);
-      return ai - bi;
-    });
-
-  const n = checkedItems.length;
+  const n = state.items.filter(i => i.checked).length;
   if (n === 0) return;
 
-  const listHtml = checkedItems.slice(0, 8).map((item, idx) => `
-    <div class="dialog-item-row">
-      <span class="dialog-item-num">${idx + 1}.</span>
-      <span class="dialog-item-name">${esc(item.name)}</span>
-    </div>`).join('') + (n > 8 ? `<div class="dialog-item-row" style="color:var(--text-dim);font-size:10px;margin-top:3px">+ ${n - 8} more</div>` : '');
-
-  document.getElementById('dialogStats').innerHTML = `
-    <strong>${n}</strong> item${n !== 1 ? 's' : ''} checked off this trip — order will be learned
-    <div class="dialog-item-list">${listHtml}</div>`;
+  document.getElementById('dialogSummary').textContent =
+    `${n} item${n !== 1 ? 's' : ''} checked off — order will be recorded.`;
 
   document.getElementById('overlay').classList.add('open');
 });
