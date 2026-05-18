@@ -50,10 +50,13 @@ function nameKey(name) {
 // PERSISTENCE
 // ════════════════════════════════════════════
 
-const STORAGE_KEY  = 'marketlist_v2';
-const HISTORY_KEY  = 'itemHistory';
-const RECIPES_KEY  = 'recipes';
-const STORES_KEY   = 'storeRegistry';
+const STORAGE_KEY          = 'marketlist_v2';
+const HISTORY_KEY          = 'itemHistory';
+const RECIPES_KEY          = 'recipes';
+const STORES_KEY           = 'storeRegistry';
+const SHOW_SORT_BADGES_KEY = 'showSortBadges';
+
+let showSortBadges = localStorage.getItem(SHOW_SORT_BADGES_KEY) === 'true';
 
 function migrateHistoryIfNeeded() {
   let needsMigration = false;
@@ -828,7 +831,7 @@ function itemHtml(item, draggable = true) {
           <span class="item-name">${esc(item.name)}</span>
           ${commentText}
         </div>
-        <span class="sort-badge ${ind.cls}" title="${ind.tip}">${ind.label}</span>
+        ${showSortBadges ? `<span class="sort-badge ${ind.cls}" title="${ind.tip}">${ind.label}</span>` : ''}
         <button class="${noteBtnCls}" data-note="${item.id}" aria-label="Add note to ${esc(item.name)}">
           <svg width="11" height="11" viewBox="0 0 11 11" fill="none">
             <path d="M7.5 1.5L9.5 3.5M1.5 9.5L2.5 6.5L7.5 1.5L9.5 3.5L4.5 8.5L1.5 9.5Z" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>
@@ -2149,6 +2152,17 @@ document.getElementById('importInput').addEventListener('change', (e) => {
   if (file) importBackupFile(file);
   e.target.value = ''; // allow same-file re-pick
 });
+document.getElementById('toggleSortBadgesBtn').addEventListener('click', () => {
+  showSortBadges = !showSortBadges;
+  localStorage.setItem(SHOW_SORT_BADGES_KEY, String(showSortBadges));
+  updateSortBadgesToggleLabel();
+  render();
+});
+function updateSortBadgesToggleLabel() {
+  document.getElementById('toggleSortBadgesBtn').textContent =
+    `Show sort badges: ${showSortBadges ? 'ON' : 'OFF'}`;
+}
+updateSortBadgesToggleLabel();
 document.getElementById('forceUpdateBtn').addEventListener('click', forceUpdate);
 document.getElementById('resetAllBtn').addEventListener('click', () => {
   closeSettings();
