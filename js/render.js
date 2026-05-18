@@ -704,12 +704,16 @@ export function toggleNote(id) {
 
 // ─── Autocomplete ────────────────────────────────────────────────────────────
 
-function buildAcHtml(matches, queryLen, storeId) {
+function buildAcHtml(matches, q, storeId) {
   const names = { 0.1: 'ENT', 0.4: 'MID', 0.7: 'BCK', 0.9: 'CHK' };
   return matches.map(([key, h]) => {
     const display = h.displayName || key.replace(/\b\w/g, c => c.toUpperCase());
-    const hi   = esc(display.slice(0, queryLen));
-    const rest = esc(display.slice(queryLen));
+    // Locate the match inside the displayed name so the highlight follows
+    // substring hits rather than always painting the leading characters.
+    const idx    = display.toLowerCase().indexOf(q);
+    const before = idx > 0 ? esc(display.slice(0, idx)) : '';
+    const hi     = esc(display.slice(Math.max(idx, 0), Math.max(idx, 0) + q.length));
+    const after  = esc(display.slice(Math.max(idx, 0) + q.length));
     const sh   = h.stores?.[storeId];
     let badge  = '';
     if (sh && sh.hist && sh.hist.length >= 2) {
@@ -717,7 +721,7 @@ function buildAcHtml(matches, queryLen, storeId) {
     } else if (sh && sh.zone != null) {
       badge = `<span class="ac-badge zone">${names[sh.zone] ?? '~'}</span>`;
     }
-    return `<div class="ac-item" data-fill="${esc(display)}"><span><span class="ac-match">${hi}</span>${rest}</span>${badge}</div>`;
+    return `<div class="ac-item" data-fill="${esc(display)}"><span>${before}<span class="ac-match">${hi}</span>${after}</span>${badge}</div>`;
   }).join('');
 }
 
@@ -738,7 +742,7 @@ export function renderAcInto(query, acEl, storeId) {
 
   if (matches.length === 0) { acEl.classList.remove('open'); acEl.innerHTML = ''; return; }
 
-  acEl.innerHTML = buildAcHtml(matches, query.length, storeId);
+  acEl.innerHTML = buildAcHtml(matches, q, storeId);
   acEl.classList.add('open');
   acEl.closest('.recipe-panel')?.classList.add('ac-open');
 }
