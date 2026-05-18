@@ -908,14 +908,6 @@ function render() {
 
   const root = document.getElementById('listRoot');
 
-  // Snapshot any open note panel before innerHTML wipes it. render() runs on
-  // every state change (e.g. checking off a different item) and would
-  // otherwise close the panel and steal focus from the user mid-typing. The
-  // input value is captured separately because the user may have typed ahead
-  // of the most recent setState({skipRender:true}) save.
-  const openNoteId = document.querySelector('.item-note-panel.open')?.closest('.item')?.dataset.id ?? null;
-  const openNoteValue = openNoteId ? document.getElementById(`note-input-${openNoteId}`)?.value : null;
-
   if (total === 0) {
     root.innerHTML = `
       <div class="empty">
@@ -925,73 +917,269 @@ function render() {
     return;
   }
 
-  let html = '';
+  // Note: the open-panel snapshot/restore from the previous render() is no
+  // longer needed. We now surgically patch existing .item nodes in place
+  // instead of replacing listRoot.innerHTML, so an open .item-note-panel and
+  // its focused input survive re-renders naturally — no wipe, no re-focus.
 
-  // To-Get section: confirmed-known items first, inferred items tacked on at the end
-  if (toGetItems.length > 0) {
-    html += `<div class="list-section">`;
-    if (checked.length > 0 || unknownItems.length > 0) {
-      html += `
-        <div class="section-header">
-          <span class="section-label">to get</span>
-          <span class="section-count">${toGetItems.length}</span>
-          <span class="section-line"></span>
-        </div>`;
-    }
-    html += toGetItems.map(item => itemHtml(item)).join('');
-    html += `</div>`;
-  }
+  // Drop any "empty" placeholder left over from a prior empty-list render.
+  const emptyEl = root.querySelector(':scope > .empty');
+  if (emptyEl) emptyEl.remove();
 
-  // Unknown availability collapsible section
-  if (unknownItems.length > 0) {
-    html += `
-      <details class="unknown-section"${unknownSectionOpen ? ' open' : ''}>
-        <summary>
-          <span class="section-label">Unknown availability</span>
-          <span class="section-count">${unknownItems.length}</span>
-          <span class="section-line"></span>
-          <span class="unknown-toggle-icon">▾</span>
-        </summary>
-        ${unknownItems.map(i => itemHtml(i, false)).join('')}
-      </details>`;
-  }
+  // Reconcile sections in fixed display order: to-get → unknown → in-cart.
+  const showToGetHeader = toGetItems.length > 0 && (checked.length > 0 || unknownItems.length > 0);
+  syncToGetSection(root, toGetItems, showToGetHeader);
+  syncUnknownSection(root, unknownItems);
+  syncInCartSection(root, checked);
 
-  // In-cart section
-  if (checked.length > 0) {
-    html += `<div class="list-section">
-      <div class="section-header">
-        <span class="section-label">in cart</span>
-        <span class="section-count">${checked.length}</span>
-        <span class="section-line"></span>
-      </div>`;
-    html += checked.map(item => itemHtml(item)).join('');
-    html += `</div>`;
-  }
-
-  root.innerHTML = html;
   lastAddedId = null;
-
-  // Restore the open note panel snapshotted above.
-  if (openNoteId) {
-    document.getElementById(`note-panel-${openNoteId}`)?.classList.add('open');
-    const input = document.getElementById(`note-input-${openNoteId}`);
-    if (input && openNoteValue !== null) input.value = openNoteValue;
-    input?.focus();
-  }
 
   // Reapply soft-delete visual state to any row still in the undo window.
   pendingDeleteIds.forEach(id => {
     const pEl = root.querySelector(`.item[data-id="${id}"]`);
     if (pEl) pEl.classList.add('item--pending-delete');
   });
+}
 
-  // Persist open/closed state across re-renders
-  const detailsEl = root.querySelector('.unknown-section');
-  if (detailsEl) {
-    detailsEl.addEventListener('toggle', () => {
-      unknownSectionOpen = detailsEl.open;
-    });
+// ─── Surgical render helpers ────────────────────────────────────────────────
+// render() reconciles three sections (to-get / unknown / in-cart) by data-id
+// rather than rebuilding listRoot.innerHTML. Each item's existing DOM node is
+// patched in place via updateItemDOM(); new items are created from itemHtml()
+// and existing items not in the new state are removed. itemHtml() remains
+// the single source of truth for row shape — when a structural change (e.g.
+// entering reorder mode, toggling sort badges, flipping availability) would
+// alter the row's shape, the row is regenerated from itemHtml() rather than
+// patched.
+
+function syncToGetSection(root, items, showHeader) {
+  let section = root.querySelector(':scope > .list-section[data-section="to-get"]');
+  if (items.length === 0) {
+    if (section) section.remove();
+    return;
   }
+  if (!section) {
+    section = document.createElement('div');
+    section.className = 'list-section';
+    section.dataset.section = 'to-get';
+  }
+  let header = section.querySelector(':scope > .section-header');
+  if (showHeader) {
+    if (!header) {
+      const tmp = document.createElement('div');
+      tmp.innerHTML = `
+        <div class="section-header">
+          <span class="section-label">to get</span>
+          <span class="section-count">${items.length}</span>
+          <span class="section-line"></span>
+        </div>`;
+      header = tmp.firstElementChild;
+      section.insertBefore(header, section.firstChild);
+    } else {
+      const countEl = header.querySelector('.section-count');
+      if (countEl && countEl.textContent !== String(items.length)) {
+        countEl.textContent = items.length;
+      }
+    }
+  } else if (header) {
+    header.remove();
+  }
+  syncSectionItems(section, items, true);
+  // Position: first child of listRoot.
+  if (root.firstElementChild !== section) {
+    root.insertBefore(section, root.firstElementChild);
+  }
+}
+
+function syncUnknownSection(root, items) {
+  let section = root.querySelector(':scope > details.unknown-section');
+  if (items.length === 0) {
+    if (section) section.remove();
+    return;
+  }
+  if (!section) {
+    section = document.createElement('details');
+    section.className = 'unknown-section';
+    section.innerHTML = `
+      <summary>
+        <span class="section-label">Unknown availability</span>
+        <span class="section-count">${items.length}</span>
+        <span class="section-line"></span>
+        <span class="unknown-toggle-icon">▾</span>
+      </summary>`;
+    if (unknownSectionOpen) section.setAttribute('open', '');
+    section.addEventListener('toggle', () => {
+      unknownSectionOpen = section.open;
+    });
+  } else {
+    const countEl = section.querySelector(':scope > summary .section-count');
+    if (countEl && countEl.textContent !== String(items.length)) {
+      countEl.textContent = items.length;
+    }
+    if (section.open !== unknownSectionOpen) section.open = unknownSectionOpen;
+  }
+  syncSectionItems(section, items, false);
+  // Position: after to-get section if it exists, else first.
+  const toGet = root.querySelector(':scope > .list-section[data-section="to-get"]');
+  const desiredPrev = toGet ?? null;
+  if (section.previousElementSibling !== desiredPrev) {
+    if (desiredPrev) desiredPrev.after(section);
+    else            root.insertBefore(section, root.firstElementChild);
+  }
+}
+
+function syncInCartSection(root, items) {
+  let section = root.querySelector(':scope > .list-section[data-section="in-cart"]');
+  if (items.length === 0) {
+    if (section) section.remove();
+    return;
+  }
+  if (!section) {
+    section = document.createElement('div');
+    section.className = 'list-section';
+    section.dataset.section = 'in-cart';
+    section.innerHTML = `
+      <div class="section-header">
+        <span class="section-label">in cart</span>
+        <span class="section-count">${items.length}</span>
+        <span class="section-line"></span>
+      </div>`;
+  } else {
+    const countEl = section.querySelector(':scope > .section-header .section-count');
+    if (countEl && countEl.textContent !== String(items.length)) {
+      countEl.textContent = items.length;
+    }
+  }
+  syncSectionItems(section, items, true);
+  // Position: last child of listRoot.
+  if (root.lastElementChild !== section) root.appendChild(section);
+}
+
+// Reconcile direct-child .item elements within `container` to match `items`
+// in order. New items are created from itemHtml(); existing items are
+// patched via updateItemDOM() (or re-created when structural state changed).
+function syncSectionItems(container, items, draggable) {
+  // Anchor: the element after which items appear (.section-header or summary).
+  const header = container.querySelector(':scope > .section-header, :scope > summary');
+
+  const existing = new Map();
+  container.querySelectorAll(':scope > .item').forEach(el => existing.set(el.dataset.id, el));
+  const desiredIds = new Set(items.map(i => i.id));
+
+  for (const [id, el] of existing) {
+    if (!desiredIds.has(id)) {
+      el.remove();
+      existing.delete(id);
+    }
+  }
+
+  let prev = header;
+  for (const item of items) {
+    let el = existing.get(item.id);
+    if (!el) {
+      const tmp = document.createElement('div');
+      tmp.innerHTML = itemHtml(item, draggable);
+      el = tmp.firstElementChild;
+      if (prev) prev.after(el);
+      else      container.insertBefore(el, container.firstChild);
+    } else {
+      if (itemNeedsRecreate(el, item, draggable)) {
+        const tmp = document.createElement('div');
+        tmp.innerHTML = itemHtml(item, draggable);
+        const fresh = tmp.firstElementChild;
+        el.replaceWith(fresh);
+        el = fresh;
+      } else {
+        updateItemDOM(el, item);
+      }
+      // Move into expected position if needed.
+      if (el.previousElementSibling !== prev) {
+        if (prev) prev.after(el);
+        else      container.insertBefore(el, container.firstChild);
+      }
+    }
+    prev = el;
+  }
+}
+
+// Returns true if `el`'s structure differs from what itemHtml(item, draggable)
+// would produce, requiring a full re-create rather than a field-level patch.
+// Patches only handle in-place updates of existing nodes; structural toggles
+// (drag handle, sort badge, unavail badge) flow through itemHtml().
+function itemNeedsRecreate(el, item, draggable) {
+  const inReorderDesired = draggable && reorderMode && !item.checked;
+  const hasReorder = el.classList.contains('reorder-mode');
+  if (inReorderDesired !== hasReorder) return true;
+
+  const hasBadge = !!el.querySelector('.sort-badge');
+  if (hasBadge !== showSortBadges) return true;
+
+  const storeId = state.currentStoreId;
+  const h = history[nameKey(item.name)] || {};
+  const isUnavailDesired = !!(h.notAt && h.notAt.includes(storeId));
+  const hasUnavailBadge = !!el.querySelector('.unavail-badge');
+  if (isUnavailDesired !== hasUnavailBadge) return true;
+
+  return false;
+}
+
+// Patch the in-place mutable fields of an existing .item element. Anything
+// that would change the row's shape is the job of itemNeedsRecreate +
+// itemHtml() — keep this function strictly to text/class/attribute tweaks.
+function updateItemDOM(el, item) {
+  const storeId = state.currentStoreId;
+  const inReorder = reorderMode && !item.checked;
+
+  // Top-level classes
+  el.classList.toggle('checked', item.checked);
+  el.classList.toggle('reorder-mode', inReorder);
+
+  // data-new (consumed once per add for the highlight-fade animation)
+  if (item.id === lastAddedId) {
+    if (el.dataset.new !== 'true') el.dataset.new = 'true';
+  } else if ('new' in el.dataset) {
+    delete el.dataset.new;
+  }
+
+  // .cb aria-checked
+  const cb = el.querySelector('.cb');
+  if (cb) {
+    const ariaVal = String(item.checked);
+    if (cb.getAttribute('aria-checked') !== ariaVal) cb.setAttribute('aria-checked', ariaVal);
+  }
+
+  // .item-name text
+  const nameEl = el.querySelector('.item-name');
+  if (nameEl && nameEl.textContent !== item.name) nameEl.textContent = item.name;
+
+  // .item-comment (create / update / remove)
+  const comment = item.comment || '';
+  let commentEl = el.querySelector('.item-comment');
+  if (comment) {
+    if (commentEl) {
+      if (commentEl.textContent !== comment) commentEl.textContent = comment;
+    } else if (nameEl) {
+      commentEl = document.createElement('span');
+      commentEl.className = 'item-comment';
+      commentEl.textContent = comment;
+      nameEl.insertAdjacentElement('afterend', commentEl);
+    }
+  } else if (commentEl) {
+    commentEl.remove();
+  }
+
+  // .sort-badge class + label + tooltip
+  const badgeEl = el.querySelector('.sort-badge');
+  if (badgeEl) {
+    const ind = indicator(item, storeId);
+    const desiredCls = `sort-badge ${ind.cls}`;
+    if (badgeEl.className !== desiredCls)              badgeEl.className = desiredCls;
+    if (badgeEl.textContent !== ind.label)             badgeEl.textContent = ind.label;
+    if (badgeEl.getAttribute('title') !== ind.tip)     badgeEl.setAttribute('title', ind.tip);
+  }
+
+  // .note-btn has-note class
+  const noteBtn = el.querySelector('.note-btn');
+  if (noteBtn) noteBtn.classList.toggle('has-note', !!comment);
 }
 
 // ════════════════════════════════════════════
