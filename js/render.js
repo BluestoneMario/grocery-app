@@ -727,8 +727,13 @@ export function renderAcInto(query, acEl, storeId) {
   if (!q) { acEl.classList.remove('open'); acEl.innerHTML = ''; return; }
 
   const matches = Object.entries(history)
-    .filter(([key]) => key.startsWith(q) && key !== q)
-    .sort(([a], [b]) => a.localeCompare(b))
+    .filter(([key]) => key !== q && key.includes(q))
+    .sort(([a], [b]) => {
+      const aPrefix = a.startsWith(q);
+      const bPrefix = b.startsWith(q);
+      if (aPrefix !== bPrefix) return aPrefix ? -1 : 1;
+      return a.localeCompare(b);
+    })
     .slice(0, 6);
 
   if (matches.length === 0) { acEl.classList.remove('open'); acEl.innerHTML = ''; return; }
