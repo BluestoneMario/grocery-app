@@ -325,8 +325,26 @@ function addRecipeToList(recipeId) {
   const itemsToAdd = r.items.filter(i => selectedIds.has(i.id));
   if (itemsToAdd.length === 0) { showToast('No items selected'); return; }
 
+  let histChanged = false;
+  const storeId = state.currentStoreId;
+
   itemsToAdd.forEach(ri => {
     const key = nameKey(ri.name);
+
+    if (!history[key]) {
+      history[key] = { displayName: ri.name, comments: [], stores: {}, notAt: [] };
+      histChanged = true;
+    } else {
+      if (!history[key].stores)   { history[key].stores   = {}; histChanged = true; }
+      if (!history[key].notAt)    { history[key].notAt    = []; histChanged = true; }
+      if (!history[key].comments) { history[key].comments = []; histChanged = true; }
+    }
+
+    if (storeId && !history[key].stores[storeId]) {
+      history[key].stores[storeId] = { zone: null, hist: [] };
+      histChanged = true;
+    }
+
     const existing = state.items.find(i => nameKey(i.name) === key);
     if (existing) {
       if (ri.amount) {
@@ -340,7 +358,7 @@ function addRecipeToList(recipeId) {
   });
 
   ui.currentView = 'list';
-  setState({}, { skipRender: true });
+  setState({}, { skipRender: true, historyChanged: histChanged });
   renderView();
   const n = itemsToAdd.length;
   const msg = n === r.items.length

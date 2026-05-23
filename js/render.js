@@ -503,8 +503,8 @@ export function renderRecipes() {
         <div class="recipes-empty-msg">No recipes yet.<br>Create one to quickly add items to your list.</div>
       </div>`;
   } else {
-    const mains    = recipes.filter(r => (r.type || 'main') !== 'dessert');
-    const desserts = recipes.filter(r => r.type === 'dessert');
+    const mains    = recipes.filter(r => (r.type || 'main') !== 'dessert').sort((a, b) => a.name.localeCompare(b.name));
+    const desserts = recipes.filter(r => r.type === 'dessert').sort((a, b) => a.name.localeCompare(b.name));
     const hasGroups = mains.length > 0 && desserts.length > 0;
 
     const sectionHeader = (label, count, variant) => `
