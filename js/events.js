@@ -806,11 +806,11 @@ document.getElementById('recipesRoot').addEventListener('click', e => {
     const r = recipes.find(r => r.id === id);
     if (r && (r.type || 'main') !== newType) {
       r.type = newType;
-      setState({}, { recipesChanged: true, skipRender: true });
-      const toggle = setType.closest('.recipe-type-toggle');
-      toggle.querySelectorAll('[data-recipe-set-type]').forEach(btn => {
-        btn.classList.toggle('active', btn.dataset.recipeSetType === newType);
-      });
+      // Full render, not a targeted patch: type drives the mains/desserts
+      // grouping and the section headers, which only renderRecipes() recomputes.
+      // It repaints the toggle's active state from r.type and restores the open
+      // panel, edit mode, and in-progress input values on the way through.
+      setState({}, { recipesChanged: true });
     }
     return;
   }

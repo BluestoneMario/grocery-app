@@ -441,6 +441,10 @@ export function recipeItemsListHtml(r) {
     </div>`).join('');
 }
 
+// The editable inputs inside a recipe panel, in the order recipeHtml() emits
+// them. renderRecipes() preserves their values across a re-render.
+const PANEL_INPUT_CLASSES = ['recipe-name-input', 'recipe-ingredient-input', 'recipe-amount-input'];
+
 export function recipeHtml(r) {
   return `
     <div class="recipe" data-recipe-id="${r.id}">
@@ -482,19 +486,27 @@ export function recipeHtml(r) {
 export function renderRecipes() {
   const root = document.getElementById('recipesRoot');
 
-  // Snapshot any open recipe panel, its editing flag, and the currently-focused
-  // input within it before innerHTML wipes the DOM. renderRecipes() can fire
-  // from setState() while the user is editing (e.g. creating a new recipe while
-  // another panel is open) and would otherwise close the panel and steal focus.
+  // Snapshot any open recipe panel, its editing flag, the half-typed values of
+  // its inputs, and which of them has focus before innerHTML wipes the DOM.
+  // renderRecipes() can fire from setState() while the user is editing (creating
+  // a recipe, flipping a recipe's type) and would otherwise close the panel,
+  // discard uncommitted input, and steal focus.
+  //
+  // Values are snapshotted for the whole open panel, not just the focused input:
+  // clicking a button inside the panel blurs the input before the click handler
+  // runs, so by the time we get here nothing in the panel is focused. Only one
+  // panel can be open at a time, so the focused input is always one of these.
   const openRecipeId = document.querySelector('.recipe-panel.open')
     ?.id?.replace('recipe-panel-', '') ?? null;
   const editingRecipeId = document.querySelector('.recipe.recipe--editing')
     ?.dataset.recipeId ?? null;
+  const openPanel = openRecipeId ? document.getElementById(`recipe-panel-${openRecipeId}`) : null;
+  const inputValues = openPanel
+    ? PANEL_INPUT_CLASSES.map(c => [c, openPanel.querySelector(`.${c}`)?.value ?? null])
+    : [];
   const focusedEl = document.activeElement;
-  const focusedClass = ['recipe-name-input', 'recipe-ingredient-input', 'recipe-amount-input']
-    .find(c => focusedEl?.classList.contains(c)) ?? null;
+  const focusedClass = PANEL_INPUT_CLASSES.find(c => focusedEl?.classList.contains(c)) ?? null;
   const focusedRecipeId = focusedClass ? focusedEl.dataset.recipeId : null;
-  const focusedValue    = focusedClass ? focusedEl.value : null;
 
   if (recipes.length === 0) {
     root.innerHTML = `
@@ -527,16 +539,20 @@ export function renderRecipes() {
   }
 
   if (openRecipeId) {
-    document.getElementById(`recipe-panel-${openRecipeId}`)?.classList.add('open');
+    const panel = document.getElementById(`recipe-panel-${openRecipeId}`);
+    panel?.classList.add('open');
+    for (const [cls, value] of inputValues) {
+      if (value === null) continue;
+      const input = panel?.querySelector(`.${cls}`);
+      if (input) input.value = value;
+    }
   }
   if (editingRecipeId) {
     document.querySelector(`.recipe[data-recipe-id="${editingRecipeId}"]`)
       ?.classList.add('recipe--editing');
   }
   if (focusedClass && focusedRecipeId) {
-    const input = document.querySelector(`.${focusedClass}[data-recipe-id="${focusedRecipeId}"]`);
-    if (input && focusedValue !== null) input.value = focusedValue;
-    input?.focus();
+    document.querySelector(`.${focusedClass}[data-recipe-id="${focusedRecipeId}"]`)?.focus();
   }
 }
 
